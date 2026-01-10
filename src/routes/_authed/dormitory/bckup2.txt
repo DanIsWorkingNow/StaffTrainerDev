@@ -300,7 +300,7 @@ function generateAllBuildings(): DormitoryBuilding[] {
 function DormitoryPage() {
   const router = useRouter()
   const { assignments, trainers, stats } = Route.useLoaderData()
-  const [selectedBuilding, setSelectedBuilding] = useState<BuildingType | ''>('')
+  const [selectedBuilding, setSelectedBuilding] = useState<BuildingType | 'all'>('all')
   const [selectedFloor, setSelectedFloor] = useState<number | 'all'>('all')
   const [searchTerm, setSearchTerm] = useState('')
   
@@ -324,7 +324,7 @@ function DormitoryPage() {
   const allBuildings = generateAllBuildings()
 
   // Get selected building data
-  const selectedBuildingData = selectedBuilding === '' 
+  const selectedBuildingData = selectedBuilding === 'all' 
     ? null 
     : allBuildings.find(b => b.name === selectedBuilding)
 
@@ -356,23 +356,21 @@ function DormitoryPage() {
 
   const allRooms = getAllRooms()
 
-  // Filter rooms - only show if building is selected
-  const filteredRooms = selectedBuilding === '' 
-    ? [] 
-    : allRooms.filter(room => {
-        const matchesBuilding = room.building === selectedBuilding
-        const matchesFloor = selectedFloor === 'all' || room.floor === selectedFloor
-        
-        if (!matchesBuilding || !matchesFloor) return false
-        
-        if (searchTerm) {
-          return room.assignments.some((a: any) => 
-            a.trainer?.name.toLowerCase().includes(searchTerm.toLowerCase())
-          )
-        }
-        
-        return true
-      })
+  // Filter rooms
+  const filteredRooms = allRooms.filter(room => {
+    const matchesBuilding = selectedBuilding === 'all' || room.building === selectedBuilding
+    const matchesFloor = selectedFloor === 'all' || room.floor === selectedFloor
+    
+    if (!matchesBuilding || !matchesFloor) return false
+    
+    if (searchTerm) {
+      return room.assignments.some((a: any) => 
+        a.trainer?.name.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    }
+    
+    return true
+  })
 
   // Get unassigned trainers
   const unassignedTrainers = trainers.filter((trainer: any) => 
@@ -428,7 +426,7 @@ function DormitoryPage() {
   }
 
   // Reset floor when building changes
-  const handleBuildingChange = (building: BuildingType | '') => {
+  const handleBuildingChange = (building: BuildingType | 'all') => {
     setSelectedBuilding(building)
     setSelectedFloor('all')
   }
@@ -438,9 +436,7 @@ function DormitoryPage() {
       {/* Header */}
       <div className="bg-white rounded-lg shadow p-6">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Dormitory Management</h1>
-        <p className="text-gray-600">
-          Select a building below to view and manage room assignments
-        </p>
+        <p className="text-gray-600">Track room assignments and occupancy across all dormitory buildings</p>
       </div>
 
       {/* Statistics */}
@@ -472,55 +468,39 @@ function DormitoryPage() {
       </div>
 
       {/* Building Overview Cards */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">Select a Building</h2>
-        <p className="text-gray-600 mb-4 text-sm">Click on any building below to view its room layout</p>
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {allBuildings.map(building => {
-            const buildingRooms = allRooms.filter(r => r.building === building.name)
-            const totalCapacity = buildingRooms.reduce((sum, r) => sum + r.capacity, 0)
-            const occupied = buildingRooms.reduce((sum, r) => sum + r.assignments.length, 0)
-            const occupancyRate = Math.round((occupied / totalCapacity) * 100)
-            const isSelected = selectedBuilding === building.name
-            
-            return (
-              <div 
-                key={building.name} 
-                className={`${building.color} rounded-lg p-4 cursor-pointer hover:shadow-lg hover:scale-105 transition-all ${
-                  isSelected 
-                    ? 'ring-4 ring-blue-600 shadow-lg scale-105' 
-                    : 'hover:ring-2 hover:ring-blue-400'
-                }`}
-                onClick={() => handleBuildingChange(building.name)}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-bold text-lg">{building.displayName}</h3>
-                  {isSelected && (
-                    <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded-full">
-                      Selected
-                    </span>
-                  )}
-                </div>
-                <div className="space-y-1 text-sm">
-                  <p className="text-gray-700">
-                    {building.type === 'quarters' ? 'Houses' : 'Rooms'}: {buildingRooms.length}
-                  </p>
-                  <p className="text-gray-700">Capacity: {totalCapacity}</p>
-                  <p className="text-gray-700">Occupied: {occupied}</p>
-                  <div className="mt-2">
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="bg-blue-600 h-2 rounded-full transition-all" 
-                        style={{ width: `${occupancyRate}%` }}
-                      />
-                    </div>
-                    <p className="text-xs text-gray-600 mt-1">{occupancyRate}% occupied</p>
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        {allBuildings.map(building => {
+          const buildingRooms = allRooms.filter(r => r.building === building.name)
+          const totalCapacity = buildingRooms.reduce((sum, r) => sum + r.capacity, 0)
+          const occupied = buildingRooms.reduce((sum, r) => sum + r.assignments.length, 0)
+          const occupancyRate = Math.round((occupied / totalCapacity) * 100)
+          
+          return (
+            <div 
+              key={building.name} 
+              className={`${building.color} rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow ${selectedBuilding === building.name ? 'ring-2 ring-blue-500' : ''}`}
+              onClick={() => handleBuildingChange(building.name)}
+            >
+              <h3 className="font-bold text-lg mb-2">{building.displayName}</h3>
+              <div className="space-y-1 text-sm">
+                <p className="text-gray-700">
+                  {building.type === 'quarters' ? 'Houses' : 'Rooms'}: {buildingRooms.length}
+                </p>
+                <p className="text-gray-700">Capacity: {totalCapacity}</p>
+                <p className="text-gray-700">Occupied: {occupied}</p>
+                <div className="mt-2">
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className="bg-blue-600 h-2 rounded-full transition-all" 
+                      style={{ width: `${occupancyRate}%` }}
+                    />
                   </div>
+                  <p className="text-xs text-gray-600 mt-1">{occupancyRate}% occupied</p>
                 </div>
               </div>
-            )
-          })}
-        </div>
+            </div>
+          )
+        })}
       </div>
 
       {/* Assign Trainer to Dormitory */}
@@ -595,19 +575,18 @@ function DormitoryPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <input
             type="text"
-            placeholder={selectedBuilding === '' ? 'Select a building first...' : 'Search by trainer name...'}
+            placeholder="Search by trainer name..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
-            disabled={selectedBuilding === ''}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
 
           <select
             value={selectedBuilding}
-            onChange={(e) => handleBuildingChange(e.target.value as BuildingType | '')}
+            onChange={(e) => handleBuildingChange(e.target.value as BuildingType | 'all')}
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           >
-            <option value="">Select a Building First</option>
+            <option value="all">All Buildings</option>
             <optgroup label="Standard Dormitories">
               <option value="ANGGERIK">ANGGERIK</option>
               <option value="BOUGANVILLA">BOUGANVILLA</option>
@@ -626,10 +605,10 @@ function DormitoryPage() {
           <select
             value={selectedFloor}
             onChange={(e) => setSelectedFloor(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
-            disabled={selectedBuilding === ''}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={selectedBuilding === 'all'}
           >
-            <option value="all">{selectedBuilding === '' ? 'Select building first' : 'All Floors'}</option>
+            <option value="all">All Floors</option>
             {availableFloors.map((floor) => (
               <option key={floor.floorNumber} value={floor.floorNumber}>
                 {floor.floorName}
@@ -642,26 +621,16 @@ function DormitoryPage() {
       {/* Room Status - Grid Layout */}
       <div className="bg-white rounded-lg shadow p-6">
         <h2 className="text-xl font-semibold mb-4">
-          {selectedBuilding !== '' 
+          {selectedBuilding !== 'all' 
             ? `${selectedBuildingData?.displayName} - ${filteredRooms.length} ${selectedBuildingData?.type === 'quarters' ? 'houses' : 'rooms'}`
-            : 'Room Layout - Please select a building'
+            : `All Buildings - ${filteredRooms.length} rooms/houses`
           }
         </h2>
         
-        {selectedBuilding === '' ? (
-          <div className="text-center py-16 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-            <div className="text-6xl mb-4">🏢</div>
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">Select a Building to View Rooms</h3>
-            <p className="text-gray-600 mb-4">Click on a building card above or use the dropdown filter to get started</p>
-            <div className="flex justify-center gap-2 text-sm text-gray-500">
-              <span>📍</span>
-              <span>Available: {allBuildings.length} buildings • {allRooms.length} rooms</span>
-            </div>
-          </div>
-        ) : filteredRooms.length === 0 ? (
+        {filteredRooms.length === 0 ? (
           <div className="text-center py-12">
-            <div className="text-6xl mb-4">🔍</div>
-            <p className="text-gray-600">No rooms found matching your filters</p>
+            <div className="text-6xl mb-4">🏢</div>
+            <p className="text-gray-600">No rooms/houses found matching your filters</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
