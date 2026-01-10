@@ -15,16 +15,25 @@ import appCss from '../styles/app.css?url'
 import { seo } from '../utils/seo'
 import { getSupabaseServerClient } from '../utils/supabase'
 
+// UPDATED: Enhanced fetchUser to include more user data
 const fetchUser = createServerFn({ method: 'GET' }).handler(async () => {
   const supabase = getSupabaseServerClient()
-  const { data, error: _error } = await supabase.auth.getUser()
+  const { data: { user }, error: _error } = await supabase.auth.getUser()
 
-  if (!data.user?.email) {
+  if (!user?.email) {
     return null
   }
 
-  return {
-    email: data.user.email,
+  // Fetch additional user data from users table
+  const { data: userData } = await supabase
+    .from('users')
+    .select('id, email, name, role, region, status')
+    .eq('id', user.id)
+    .single()
+
+  return userData || {
+    id: user.id,
+    email: user.email,
   }
 })
 
@@ -126,17 +135,52 @@ function RootDocument({ children }: { children: React.ReactNode }) {
                 <NavLink to="/trainer-overview" label="Overview" icon="👥" />
               </div>
 
-              {/* User Menu */}
+              {/* UPDATED: User Menu with Profile Dropdown */}
               <div className="flex items-center space-x-4">
                 {user ? (
                   <>
-                    <span className="hidden sm:inline text-sm">{user.email}</span>
-                    <Link 
-                      to="/logout" 
-                      className="bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded text-sm"
-                    >
-                      Logout
-                    </Link>
+                    {/* Profile Dropdown */}
+                    <div className="relative group">
+                      {/* Profile Button */}
+                      <button className="flex items-center space-x-2 hover:bg-red-800 px-3 py-2 rounded-lg transition">
+                        {/* Avatar */}
+                        <div className="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center border-2 border-white/30">
+                          <span className="text-sm font-bold text-white">
+                            {user.email?.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <span className="hidden sm:inline text-sm font-medium">{user.email}</span>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+
+                      {/* Dropdown Menu */}
+                      <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                        <div className="px-4 py-3 border-b border-gray-200">
+                          <p className="text-sm font-semibold text-gray-900 truncate">{user.email}</p>
+                          <p className="text-xs text-gray-500 mt-1">Signed in</p>
+                        </div>
+                        
+                        <Link
+                          to="/profile"
+                          className="flex items-center space-x-3 px-4 py-3 hover:bg-gray-100 transition text-gray-700"
+                        >
+                          <span className="text-xl">👤</span>
+                          <span className="font-medium">My Profile</span>
+                        </Link>
+                        
+                        <div className="border-t border-gray-200 my-2"></div>
+                        
+                        <Link
+                          to="/logout"
+                          className="flex items-center space-x-3 px-4 py-3 hover:bg-red-50 transition text-red-600"
+                        >
+                          <span className="text-xl">🚪</span>
+                          <span className="font-medium">Logout</span>
+                        </Link>
+                      </div>
+                    </div>
                   </>
                 ) : (
                   <Link 
@@ -159,17 +203,79 @@ function RootDocument({ children }: { children: React.ReactNode }) {
               </div>
             </div>
 
-            {/* Mobile Menu */}
+            {/* UPDATED: Mobile Menu with Profile Section */}
             {isMobileMenuOpen && (
               <div className="md:hidden py-4 border-t border-red-800">
                 <div className="flex flex-col space-y-2">
-                  <MobileNavLink to="/" label="Home" icon="🏠" />
-                  <MobileNavLink to="/schedule" label="Schedule" icon="📅" />
-                  <MobileNavLink to="/events" label="Events" icon="📋" />
-                  <MobileNavLink to="/dormitory" label="Dormitory" icon="🏢" />
-                  <MobileNavLink to="/physical-training" label="Physical Training" icon="💪" />
-                  <MobileNavLink to="/religious-activity" label="Religious Activity" icon="📖" />
-                  <MobileNavLink to="/trainer-overview" label="Trainer Overview" icon="👥" />
+                  {/* NEW: Profile Section for Mobile */}
+                  {user && (
+                    <>
+                      <div className="border-b border-red-800 pb-3 mb-3">
+                        <div className="flex items-center space-x-3 px-4 py-2">
+                          <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center border-2 border-white/30">
+                            <span className="text-white font-bold">
+                              {user.email?.charAt(0).toUpperCase()}
+                            </span>
+                          </div>
+                          <div>
+                            <p className="font-semibold text-white text-sm">{user.email}</p>
+                            <p className="text-xs text-orange-200">Signed in</p>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <MobileNavLink 
+                        to="/profile" 
+                        label="My Profile" 
+                        icon="👤"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      />
+                    </>
+                  )}
+                  
+                  {/* Existing Mobile Navigation Links */}
+                  <MobileNavLink 
+                    to="/" 
+                    label="Home" 
+                    icon="🏠"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  />
+                  <MobileNavLink 
+                    to="/schedule" 
+                    label="Schedule" 
+                    icon="📅"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  />
+                  <MobileNavLink 
+                    to="/events" 
+                    label="Events" 
+                    icon="📋"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  />
+                  <MobileNavLink 
+                    to="/dormitory" 
+                    label="Dormitory" 
+                    icon="🏢"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  />
+                  <MobileNavLink 
+                    to="/physical-training" 
+                    label="Physical Training" 
+                    icon="💪"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  />
+                  <MobileNavLink 
+                    to="/religious-activity" 
+                    label="Religious Activity" 
+                    icon="📖"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  />
+                  <MobileNavLink 
+                    to="/trainer-overview" 
+                    label="Trainer Overview" 
+                    icon="👥"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  />
                 </div>
               </div>
             )}
@@ -205,16 +311,27 @@ function NavLink({ to, label, icon }: { to: string; label: string; icon: string 
   )
 }
 
-// Mobile Navigation Link Component
-function MobileNavLink({ to, label, icon }: { to: string; label: string; icon: string }) {
+// UPDATED: Mobile Navigation Link Component with onClick support
+function MobileNavLink({ 
+  to, 
+  label, 
+  icon,
+  onClick 
+}: { 
+  to: string
+  label: string
+  icon: string
+  onClick?: () => void
+}) {
   return (
     <Link
       to={to}
       activeProps={{
-        className: 'bg-blue-700 text-white',
+        className: 'bg-red-900 text-white',
       }}
       activeOptions={{ exact: to === '/' }}
-      className="px-4 py-3 rounded hover:bg-blue-800 transition flex items-center space-x-3"
+      className="px-4 py-3 rounded hover:bg-red-800 transition flex items-center space-x-3"
+      onClick={onClick}
     >
       <span className="text-xl">{icon}</span>
       <span>{label}</span>
