@@ -2,7 +2,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { getSupabaseServerClient } from '~/utils/supabase'
 
-// Server function to fetch user profile
+// Server function to fetch ONLY safe, non-sensitive user data
 const getUserProfile = createServerFn({ method: 'GET' }).handler(async () => {
   const supabase = getSupabaseServerClient()
   
@@ -12,38 +12,45 @@ const getUserProfile = createServerFn({ method: 'GET' }).handler(async () => {
     throw new Error('Not authenticated')
   }
 
-  // METHOD 1: Use raw SQL query (most reliable)
-  const { data: profileData, error: profileError } = await supabase.rpc('get_trainer_profile', {
-    p_user_id: user.id
-  })
+  // Fetch ONLY non-sensitive user data
+  const { data: userData, error: userError } = await supabase
+    .from('users')
+    .select(`
+      id,
+      email,
+      name,
+      role,
+      rank,
+      region,
+      status,
+      created_at,
+      updated_at
+    `)
+    .eq('email', user.email)  // Match by email instead!
+    .single()
 
-  // METHOD 2: If RPC doesn't work, use manual query building
-  if (profileError || !profileData) {
-    // Fallback: Get trainer and role separately
-    const { data: trainerData, error: trainerError } = await supabase
-      .from('trainers')
-      .select('id, name, rank, region, specialization, status, is_active, created_at, updated_at, last_login, role_id')
-      .eq('user_id', user.id)
-      .single()
+  if (userError) {
+    console.error('Error fetching user data:', userError)
+    throw new Error('Failed to fetch user profile')
+  }
 
-    if (trainerError || !trainerData) {
-      console.error('Error fetching trainer data:', trainerError)
-      throw new Error('Failed to fetch user profile')
-    }
+  // Check if user is a trainer
+  const { data: trainerData } = await supabase
+    .from('trainers')
+    .select(`
+      id,
+      name,
+      rank,
+      specialization,
+      status,
+      created_at
+    `)
+    .eq('email', userData.email)
+    .single()
 
-    // Get role data separately
-    let roleData = null
-    if (trainerData.role_id) {
-      const { data: role } = await supabase
-        .from('roles')
-        .select('id, name, level, description')
-        .eq('id', trainerData.role_id)
-        .single()
-      
-      roleData = role
-    }
-
-    // Fetch activity statistics
+  // Fetch activity statistics for trainers only
+  let activityStats = null
+  if (trainerData) {
     const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
       .toISOString().split('T')[0]
 
@@ -74,38 +81,20 @@ const getUserProfile = createServerFn({ method: 'GET' }).handler(async () => {
       .contains('participants', [trainerData.id])
       .gte('date', firstDayOfMonth)
 
-    const activityStats = {
+    activityStats = {
       totalReligious: religiousActivities?.length || 0,
       totalPhysicalTraining: physicalTraining?.length || 0,
       totalEvents: events?.length || 0,
       monthlyReligious: monthlyReligious?.length || 0,
       monthlyPhysicalTraining: monthlyPT?.length || 0,
     }
-
-    // Return combined profile data
-    return {
-      profile: {
-        id: trainerData.id,
-        name: trainerData.name,
-        email: user.email || '',
-        role: roleData?.name || 'UNKNOWN',
-        roleLevel: roleData?.level || 0,
-        roleDescription: roleData?.description || '',
-        rank: trainerData.rank || 'Not set',
-        region: trainerData.region || 'Not set',
-        specialization: trainerData.specialization || 'Not set',
-        status: trainerData.status,
-        isActive: trainerData.is_active,
-        createdAt: trainerData.created_at,
-        updatedAt: trainerData.updated_at,
-        lastLogin: trainerData.last_login || null,
-      },
-      activityStats,
-    }
   }
 
-  // If RPC worked, return that data (you'd need to format it)
-  return profileData
+  return {
+    user: userData,
+    trainer: trainerData,
+    activityStats,
+  }
 })
 
 export const Route = createFileRoute('/_authed/profile/')({
@@ -114,7 +103,7 @@ export const Route = createFileRoute('/_authed/profile/')({
 })
 
 function ProfilePage() {
-  const { profile, activityStats } = Route.useLoaderData()
+  const { user, trainer, activityStats } = Route.useLoaderData()
 
   return (
     <div className="max-w-5xl mx-auto p-6 space-y-6">
@@ -123,34 +112,26 @@ function ProfilePage() {
         <div className="flex items-center space-x-6">
           <div className="w-24 h-24 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center border-4 border-white/30">
             <span className="text-5xl font-bold text-white">
-              {profile.name?.charAt(0).toUpperCase() || 'U'}
+              {user.name?.charAt(0).toUpperCase() || user.email?.charAt(0).toUpperCase()}
             </span>
           </div>
           
           <div className="flex-1">
-            <h1 className="text-3xl font-bold mb-2">
-              {profile.role === 'ADMIN' ? 'System Administrator' : profile.name}
-            </h1>
-            <p className="text-orange-100 text-lg">{profile.email}</p>
+            <h1 className="text-3xl font-bold mb-2">{user.name || 'User Profile'}</h1>
+            <p className="text-orange-100 text-lg">{user.email}</p>
             <div className="flex items-center space-x-4 mt-3">
               <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
-                profile.isActive 
+                user.status === 'active' 
                   ? 'bg-green-500/30 text-green-100 border border-green-300/50' 
                   : 'bg-gray-500/30 text-gray-100 border border-gray-300/50'
               }`}>
-                {profile.isActive ? '✓ Active' : 'Inactive'}
+                {user.status === 'active' ? '✓ Active' : 'Inactive'}
               </span>
-              <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
-                profile.role === 'ADMIN' 
-                  ? 'bg-purple-500/30 text-purple-100 border border-purple-300/50'
-                  : profile.role === 'COORDINATOR'
-                  ? 'bg-blue-500/30 text-blue-100 border border-blue-300/50'
-                  : 'bg-green-500/30 text-green-100 border border-green-300/50'
-              }`}>
-                {profile.role === 'ADMIN' ? '👑 Administrator' : 
-                 profile.role === 'COORDINATOR' ? '📋 Coordinator' : 
-                 '👨‍🏫 Trainer'}
-              </span>
+              {trainer && (
+                <span className="px-3 py-1 rounded-full text-sm font-semibold bg-blue-500/30 text-blue-100 border border-blue-300/50">
+                  👨‍🏫 Trainer
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -159,7 +140,7 @@ function ProfilePage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column - Personal Information */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Personal Details Card */}
+          {/* Personal Details Card - NO SENSITIVE DATA */}
           <div className="bg-white rounded-lg shadow-lg p-6">
             <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center">
               <span className="text-3xl mr-3">👤</span>
@@ -167,15 +148,14 @@ function ProfilePage() {
             </h2>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <InfoField label="Full Name" value={profile.name} />
-              <InfoField label="Email Address" value={profile.email} />
-              <InfoField label="Role" value={profile.role} />
-              <InfoField label="Rank" value={profile.rank} />
-              <InfoField label="Region" value={profile.region} />
-              <InfoField label="Specialization" value={profile.specialization} />
+              <InfoField label="Full Name" value={user.name || 'Not set'} />
+              <InfoField label="Email Address" value={user.email} />
+              <InfoField label="Role" value={user.role || 'Not set'} />
+              <InfoField label="Rank" value={user.rank || 'Not set'} />
+              <InfoField label="Region" value={user.region || 'Not set'} />
               <InfoField 
                 label="Account Created" 
-                value={new Date(profile.createdAt).toLocaleDateString('en-MY', { 
+                value={new Date(user.created_at).toLocaleDateString('en-MY', { 
                   year: 'numeric', 
                   month: 'long', 
                   day: 'numeric' 
@@ -183,7 +163,7 @@ function ProfilePage() {
               />
               <InfoField 
                 label="Last Updated" 
-                value={new Date(profile.updatedAt).toLocaleDateString('en-MY', { 
+                value={new Date(user.updated_at).toLocaleDateString('en-MY', { 
                   year: 'numeric', 
                   month: 'long', 
                   day: 'numeric' 
@@ -192,51 +172,29 @@ function ProfilePage() {
             </div>
           </div>
 
-          {/* Role Permissions Card */}
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center">
-              <span className="text-3xl mr-3">🔐</span>
-              Role & Permissions
-            </h2>
-            
-            <div className="space-y-4">
-              <div className="p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-bold text-lg text-gray-900">{profile.role}</h3>
-                  <span className="px-3 py-1 bg-blue-600 text-white rounded-full text-sm font-semibold">
-                    Level {profile.roleLevel}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-700">
-                  {profile.roleDescription}
-                </p>
+          {/* Trainer Details Card */}
+          {trainer && (
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center">
+                <span className="text-3xl mr-3">🏅</span>
+                Trainer Information
+              </h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <InfoField label="Rank" value={trainer.rank || 'Not set'} />
+                <InfoField label="Specialization" value={trainer.specialization || 'Not set'} />
+                <InfoField label="Trainer Status" value={trainer.status || 'Not set'} />
+                <InfoField 
+                  label="Joined as Trainer" 
+                  value={new Date(trainer.created_at).toLocaleDateString('en-MY', { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                  })} 
+                />
               </div>
-              
-              {profile.role === 'ADMIN' && (
-                <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-                  <p className="text-sm text-purple-900 font-medium">
-                    ✓ Full system access • User management • All modules
-                  </p>
-                </div>
-              )}
-              
-              {profile.role === 'COORDINATOR' && (
-                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                  <p className="text-sm text-blue-900 font-medium">
-                    ✓ Schedule management • Event creation • Trainer assignments
-                  </p>
-                </div>
-              )}
-              
-              {profile.role === 'TRAINER' && (
-                <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-                  <p className="text-sm text-green-900 font-medium">
-                    ✓ View schedules • Update profile • View activities
-                  </p>
-                </div>
-              )}
             </div>
-          </div>
+          )}
 
           {/* Account Security Card */}
           <div className="bg-white rounded-lg shadow-lg p-6">
@@ -261,7 +219,7 @@ function ProfilePage() {
 
         {/* Right Column - Activity Stats */}
         <div className="space-y-6">
-          {activityStats && (
+          {trainer && activityStats && (
             <>
               {/* Quick Stats Card */}
               <div className="bg-white rounded-lg shadow-lg p-6">
@@ -328,10 +286,12 @@ function ProfilePage() {
             
             <div className="space-y-2">
               <QuickActionButton to="/schedule" label="View Schedule" icon="📅" />
-              <QuickActionButton to="/physical-training" label="PT Sessions" icon="💪" />
-              <QuickActionButton to="/religious-activity" label="Religious Activities" icon="📖" />
-              {(profile.role === 'ADMIN' || profile.role === 'COORDINATOR') && (
-                <QuickActionButton to="/trainer-overview" label="Trainer Overview" icon="👨‍🏫" />
+              {trainer && (
+                <>
+                  <QuickActionButton to="/physical-training" label="PT Sessions" icon="💪" />
+                  <QuickActionButton to="/religious-activity" label="Religious Activities" icon="📖" />
+                  <QuickActionButton to="/trainer-overview" label="My Activities" icon="👨‍🏫" />
+                </>
               )}
               <QuickActionButton to="/logout" label="Logout" icon="🚪" color="text-red-600" />
             </div>
