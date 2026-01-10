@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
-import { getCurrentUserRole, type UserRoleData, type Permission } from '~/middleware/rbac'
+import { 
+  getCurrentUserRole, 
+  type UserRoleData, 
+  type Permission 
+} from '~/middleware/rbac'
 
 /**
  * Hook to get current user's role and permissions
- * Uses useState and useEffect instead of react-query
  */
 export function useCurrentUserRole() {
   const [data, setData] = useState<UserRoleData | null>(null)
@@ -16,6 +19,7 @@ export function useCurrentUserRole() {
     const fetchUserRole = async () => {
       try {
         setIsLoading(true)
+        // Call the server function
         const result = await getCurrentUserRole()
         if (mounted) {
           setData(result)

@@ -14,6 +14,7 @@ import { Route as LogoutRouteImport } from './routes/logout'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as AuthedIndexRouteImport } from './routes/_authed/index'
+import { Route as AuthedTestRbacRouteImport } from './routes/_authed/test-rbac'
 import { Route as AuthedPostsRouteImport } from './routes/_authed/posts'
 import { Route as AuthedTrainerOverviewIndexRouteImport } from './routes/_authed/trainer-overview/index'
 import { Route as AuthedScheduleIndexRouteImport } from './routes/_authed/schedule/index'
@@ -49,6 +50,11 @@ const AuthedRoute = AuthedRouteImport.update({
 const AuthedIndexRoute = AuthedIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedTestRbacRoute = AuthedTestRbacRouteImport.update({
+  id: '/test-rbac',
+  path: '/test-rbac',
   getParentRoute: () => AuthedRoute,
 } as any)
 const AuthedPostsRoute = AuthedPostsRouteImport.update({
@@ -120,6 +126,7 @@ export interface FileRoutesByFullPath {
   '/logout': typeof LogoutRoute
   '/signup': typeof SignupRoute
   '/posts': typeof AuthedPostsRouteWithChildren
+  '/test-rbac': typeof AuthedTestRbacRoute
   '/': typeof AuthedIndexRoute
   '/events/$id': typeof AuthedEventsIdRoute
   '/events/create': typeof AuthedEventsCreateRoute
@@ -137,6 +144,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
   '/signup': typeof SignupRoute
+  '/test-rbac': typeof AuthedTestRbacRoute
   '/': typeof AuthedIndexRoute
   '/events/$id': typeof AuthedEventsIdRoute
   '/events/create': typeof AuthedEventsCreateRoute
@@ -157,6 +165,7 @@ export interface FileRoutesById {
   '/logout': typeof LogoutRoute
   '/signup': typeof SignupRoute
   '/_authed/posts': typeof AuthedPostsRouteWithChildren
+  '/_authed/test-rbac': typeof AuthedTestRbacRoute
   '/_authed/': typeof AuthedIndexRoute
   '/_authed/events/$id': typeof AuthedEventsIdRoute
   '/_authed/events/create': typeof AuthedEventsCreateRoute
@@ -177,6 +186,7 @@ export interface FileRouteTypes {
     | '/logout'
     | '/signup'
     | '/posts'
+    | '/test-rbac'
     | '/'
     | '/events/$id'
     | '/events/create'
@@ -194,6 +204,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/logout'
     | '/signup'
+    | '/test-rbac'
     | '/'
     | '/events/$id'
     | '/events/create'
@@ -213,6 +224,7 @@ export interface FileRouteTypes {
     | '/logout'
     | '/signup'
     | '/_authed/posts'
+    | '/_authed/test-rbac'
     | '/_authed/'
     | '/_authed/events/$id'
     | '/_authed/events/create'
@@ -269,6 +281,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AuthedIndexRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/test-rbac': {
+      id: '/_authed/test-rbac'
+      path: '/test-rbac'
+      fullPath: '/test-rbac'
+      preLoaderRoute: typeof AuthedTestRbacRouteImport
       parentRoute: typeof AuthedRoute
     }
     '/_authed/posts': {
@@ -374,6 +393,7 @@ const AuthedPostsRouteWithChildren = AuthedPostsRoute._addFileChildren(
 
 interface AuthedRouteChildren {
   AuthedPostsRoute: typeof AuthedPostsRouteWithChildren
+  AuthedTestRbacRoute: typeof AuthedTestRbacRoute
   AuthedIndexRoute: typeof AuthedIndexRoute
   AuthedEventsIdRoute: typeof AuthedEventsIdRoute
   AuthedEventsCreateRoute: typeof AuthedEventsCreateRoute
@@ -388,6 +408,7 @@ interface AuthedRouteChildren {
 
 const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedPostsRoute: AuthedPostsRouteWithChildren,
+  AuthedTestRbacRoute: AuthedTestRbacRoute,
   AuthedIndexRoute: AuthedIndexRoute,
   AuthedEventsIdRoute: AuthedEventsIdRoute,
   AuthedEventsCreateRoute: AuthedEventsCreateRoute,
