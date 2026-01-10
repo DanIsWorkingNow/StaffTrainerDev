@@ -20,12 +20,13 @@ const getUserProfile = createServerFn({ method: 'GET' }).handler(async () => {
       email,
       name,
       role,
+      rank,
       region,
       status,
       created_at,
       updated_at
     `)
-    .eq('id', user.id)
+    .eq('email', user.email)  // Match by email instead!
     .single()
 
   if (userError) {
@@ -150,6 +151,7 @@ function ProfilePage() {
               <InfoField label="Full Name" value={user.name || 'Not set'} />
               <InfoField label="Email Address" value={user.email} />
               <InfoField label="Role" value={user.role || 'Not set'} />
+              <InfoField label="Rank" value={user.rank || 'Not set'} />
               <InfoField label="Region" value={user.region || 'Not set'} />
               <InfoField 
                 label="Account Created" 

@@ -27,8 +27,8 @@ const fetchUser = createServerFn({ method: 'GET' }).handler(async () => {
   // Fetch additional user data from users table
   const { data: userData } = await supabase
     .from('users')
-    .select('id, email, name, role, region, status')
-    .eq('id', user.id)
+    .select('id, email, name, role, rank, region, status')
+    .eq('email', user.email)  // Match by email instead!
     .single()
 
   return userData || {
