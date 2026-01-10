@@ -12,14 +12,6 @@ interface ProtectedRouteProps {
 
 /**
  * Component to protect routes based on user role
- * Wrap your route content with this component
- * 
- * @example
- * ```tsx
- * <ProtectedRoute allowedRoles={['ADMIN', 'COORDINATOR']}>
- *   <YourComponent />
- * </ProtectedRoute>
- * ```
  */
 export function ProtectedRoute({
   children,
@@ -35,7 +27,7 @@ export function ProtectedRoute({
 
     // Not authenticated - redirect to login
     if (!userData) {
-      navigate({ to: fallbackPath })
+      navigate({ to: fallbackPath as any })
       return
     }
 
@@ -43,9 +35,9 @@ export function ProtectedRoute({
     if (!allowedRoles.includes(userData.role)) {
       // Redirect based on user role
       if (userData.role === 'TRAINER') {
-        navigate({ to: '/schedule' }) // Trainers go to schedule page
+        navigate({ to: '/schedule' as any })
       } else {
-        navigate({ to: '/overview' }) // Others go to overview
+        navigate({ to: '/overview' as any })
       }
     }
   }, [userData, isLoading, allowedRoles, navigate, fallbackPath])
@@ -81,7 +73,7 @@ export function ProtectedRoute({
             Required role: {allowedRoles.join(' or ')}
           </p>
           <button
-            onClick={() => navigate({ to: '/overview' })}
+            onClick={() => navigate({ to: '/overview' as any })}
             className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
           >
             Go to Dashboard
