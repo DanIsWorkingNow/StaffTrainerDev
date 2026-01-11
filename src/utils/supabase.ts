@@ -22,3 +22,31 @@ export function getSupabaseServerClient() {
     },
   )
 }
+
+export function getSupabaseAdminClient() {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!serviceRoleKey) {
+    return null
+  }
+
+  return createServerClient(
+    process.env.SUPABASE_URL!,
+    serviceRoleKey,
+    {
+      cookies: {
+        getAll() {
+          return Object.entries(getCookies()).map(([name, value]) => ({
+            name,
+            value,
+          }))
+        },
+        setAll(cookies) {
+          cookies.forEach((cookie) => {
+            setCookie(cookie.name, cookie.value)
+          })
+        },
+      },
+    },
+  )
+}
