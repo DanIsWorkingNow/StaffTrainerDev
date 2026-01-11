@@ -33,7 +33,7 @@ interface Room {
 // Server function to fetch dormitory data
 const getDormitoryData = createServerFn({ method: 'GET' }).handler(async () => {
   const supabase = getSupabaseServerClient()
-  
+
   const { data: assignments } = await supabase
     .from('dormitory_assignments')
     .select(`
@@ -49,15 +49,15 @@ const getDormitoryData = createServerFn({ method: 'GET' }).handler(async () => {
 
   // Calculate statistics based on actual structure
   const buildings = generateAllBuildings()
-  const totalRooms = buildings.reduce((sum, building) => 
-    sum + building.floors.reduce((floorSum, floor) => 
+  const totalRooms = buildings.reduce((sum, building) =>
+    sum + building.floors.reduce((floorSum, floor) =>
       floorSum + floor.rooms.length, 0
     ), 0
   )
-  
-  const totalCapacity = buildings.reduce((sum, building) => 
-    sum + building.floors.reduce((floorSum, floor) => 
-      floorSum + floor.rooms.reduce((roomSum, room) => 
+
+  const totalCapacity = buildings.reduce((sum, building) =>
+    sum + building.floors.reduce((floorSum, floor) =>
+      floorSum + floor.rooms.reduce((roomSum, room) =>
         roomSum + room.capacity, 0
       ), 0
     ), 0
@@ -85,7 +85,7 @@ const assignTrainer = createServerFn({ method: 'POST' })
   .inputValidator((data: { trainerId: number; roomId: string }) => data)
   .handler(async ({ data }) => {
     const supabase = getSupabaseServerClient()
-    
+
     const { error } = await supabase
       .from('dormitory_assignments')
       .insert({
@@ -107,7 +107,7 @@ const removeTrainer = createServerFn({ method: 'POST' })
   .inputValidator((data: { assignmentId: number }) => data)
   .handler(async ({ data }) => {
     const supabase = getSupabaseServerClient()
-    
+
     const { error } = await supabase
       .from('dormitory_assignments')
       .delete()
@@ -121,6 +121,12 @@ const removeTrainer = createServerFn({ method: 'POST' })
   })
 
 export const Route = createFileRoute('/_authed/dormitory/')({
+  beforeLoad: ({ context }) => {
+    // Check if user exists and has TRAINER role
+    if (context.user?.role === 'TRAINER') {
+      throw new Error('Unauthorized Access: Trainers cannot access dormitory management')
+    }
+  },
   loader: async () => await getDormitoryData(),
   component: DormitoryPage,
 })
@@ -145,7 +151,7 @@ function generateAllBuildings(): DormitoryBuilding[] {
 
   standardDorms.forEach(dormName => {
     const floors: Floor[] = []
-    
+
     // Ground floor - 8 rooms
     const groundFloorRooms: Room[] = []
     for (let i = 1; i <= 8; i++) {
@@ -195,7 +201,7 @@ function generateAllBuildings(): DormitoryBuilding[] {
 
   // SEROJA - VIP dormitory
   const serojaFloors: Floor[] = []
-  
+
   // Ground floor - 8 rooms, 2 beds each
   const serojaGroundRooms: Room[] = []
   for (let i = 1; i <= 8; i++) {
@@ -266,7 +272,7 @@ function generateAllBuildings(): DormitoryBuilding[] {
   lestariBuildings.forEach((lestariName, index) => {
     const floors: Floor[] = []
     const houses: Room[] = []
-    
+
     // 15 houses per LESTARI building, 8 capacity each
     for (let i = 1; i <= 15; i++) {
       houses.push({
@@ -303,7 +309,7 @@ function DormitoryPage() {
   const [selectedBuilding, setSelectedBuilding] = useState<BuildingType | ''>('')
   const [selectedFloor, setSelectedFloor] = useState<number | 'all'>('all')
   const [searchTerm, setSearchTerm] = useState('')
-  
+
   // Assignment form state
   const [selectedTrainer, setSelectedTrainer] = useState<string>('')
   const [selectedRoom, setSelectedRoom] = useState<string>('')
@@ -324,19 +330,19 @@ function DormitoryPage() {
   const allBuildings = generateAllBuildings()
 
   // Get selected building data
-  const selectedBuildingData = selectedBuilding === '' 
-    ? null 
+  const selectedBuildingData = selectedBuilding === ''
+    ? null
     : allBuildings.find(b => b.name === selectedBuilding)
 
   // Get available floors for selected building
-  const availableFloors = selectedBuildingData 
-    ? selectedBuildingData.floors 
+  const availableFloors = selectedBuildingData
+    ? selectedBuildingData.floors
     : []
 
   // Get all rooms with assignments
   const getAllRooms = () => {
     const rooms: any[] = []
-    
+
     allBuildings.forEach(building => {
       building.floors.forEach(floor => {
         floor.rooms.forEach(room => {
@@ -350,32 +356,32 @@ function DormitoryPage() {
         })
       })
     })
-    
+
     return rooms
   }
 
   const allRooms = getAllRooms()
 
   // Filter rooms - only show if building is selected
-  const filteredRooms = selectedBuilding === '' 
-    ? [] 
+  const filteredRooms = selectedBuilding === ''
+    ? []
     : allRooms.filter(room => {
-        const matchesBuilding = room.building === selectedBuilding
-        const matchesFloor = selectedFloor === 'all' || room.floor === selectedFloor
-        
-        if (!matchesBuilding || !matchesFloor) return false
-        
-        if (searchTerm) {
-          return room.assignments.some((a: any) => 
-            a.trainer?.name.toLowerCase().includes(searchTerm.toLowerCase())
-          )
-        }
-        
-        return true
-      })
+      const matchesBuilding = room.building === selectedBuilding
+      const matchesFloor = selectedFloor === 'all' || room.floor === selectedFloor
+
+      if (!matchesBuilding || !matchesFloor) return false
+
+      if (searchTerm) {
+        return room.assignments.some((a: any) =>
+          a.trainer?.name.toLowerCase().includes(searchTerm.toLowerCase())
+        )
+      }
+
+      return true
+    })
 
   // Get unassigned trainers
-  const unassignedTrainers = trainers.filter((trainer: any) => 
+  const unassignedTrainers = trainers.filter((trainer: any) =>
     !assignments.some((a: any) => a.trainer?.id === trainer.id)
   )
 
@@ -388,17 +394,17 @@ function DormitoryPage() {
 
     setIsAssigning(true)
     try {
-      await assignTrainer({ 
-        data: { 
-          trainerId: parseInt(selectedTrainer), 
-          roomId: selectedRoom 
-        } 
+      await assignTrainer({
+        data: {
+          trainerId: parseInt(selectedTrainer),
+          roomId: selectedRoom
+        }
       })
-      
+
       // Reset form
       setSelectedTrainer('')
       setSelectedRoom('')
-      
+
       // Invalidate and refetch data
       await router.invalidate()
     } catch (error) {
@@ -417,7 +423,7 @@ function DormitoryPage() {
     setIsRemoving(true)
     try {
       await removeTrainer({ data: { assignmentId } })
-      
+
       // Invalidate and refetch data
       await router.invalidate()
     } catch (error) {
@@ -445,28 +451,28 @@ function DormitoryPage() {
 
       {/* Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatCard 
-          title="Total Rooms" 
-          value={stats.totalRooms} 
-          icon="🏢" 
+        <StatCard
+          title="Total Rooms"
+          value={stats.totalRooms}
+          icon="🏢"
           color="bg-blue-500"
         />
-        <StatCard 
-          title="Occupied Rooms" 
-          value={stats.occupiedRooms} 
-          icon="🔒" 
+        <StatCard
+          title="Occupied Rooms"
+          value={stats.occupiedRooms}
+          icon="🔒"
           color="bg-green-500"
         />
-        <StatCard 
-          title="Available Rooms" 
-          value={stats.availableRooms} 
-          icon="🔓" 
+        <StatCard
+          title="Available Rooms"
+          value={stats.availableRooms}
+          icon="🔓"
           color="bg-yellow-500"
         />
-        <StatCard 
-          title="Occupancy Rate" 
-          value={`${stats.occupancyRate}%`} 
-          icon="📊" 
+        <StatCard
+          title="Occupancy Rate"
+          value={`${stats.occupancyRate}%`}
+          icon="📊"
           color="bg-purple-500"
         />
       </div>
@@ -482,15 +488,14 @@ function DormitoryPage() {
             const occupied = buildingRooms.reduce((sum, r) => sum + r.assignments.length, 0)
             const occupancyRate = Math.round((occupied / totalCapacity) * 100)
             const isSelected = selectedBuilding === building.name
-            
+
             return (
-              <div 
-                key={building.name} 
-                className={`${building.color} rounded-lg p-4 cursor-pointer hover:shadow-lg hover:scale-105 transition-all ${
-                  isSelected 
-                    ? 'ring-4 ring-blue-600 shadow-lg scale-105' 
-                    : 'hover:ring-2 hover:ring-blue-400'
-                }`}
+              <div
+                key={building.name}
+                className={`${building.color} rounded-lg p-4 cursor-pointer hover:shadow-lg hover:scale-105 transition-all ${isSelected
+                  ? 'ring-4 ring-blue-600 shadow-lg scale-105'
+                  : 'hover:ring-2 hover:ring-blue-400'
+                  }`}
                 onClick={() => handleBuildingChange(building.name)}
               >
                 <div className="flex items-center justify-between mb-2">
@@ -509,8 +514,8 @@ function DormitoryPage() {
                   <p className="text-gray-700">Occupied: {occupied}</p>
                   <div className="mt-2">
                     <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="bg-blue-600 h-2 rounded-full transition-all" 
+                      <div
+                        className="bg-blue-600 h-2 rounded-full transition-all"
                         style={{ width: `${occupancyRate}%` }}
                       />
                     </div>
@@ -562,10 +567,10 @@ function DormitoryPage() {
               {allRooms
                 .filter(room => room.assignments.length < room.capacity)
                 .map((room) => {
-                  const roomLabel = room.type === 'quarters' 
+                  const roomLabel = room.type === 'quarters'
                     ? `${room.buildingDisplayName} - House ${room.roomNumber}`
                     : `${room.buildingDisplayName} - ${room.floorName} - Room ${room.roomNumber}`
-                  
+
                   return (
                     <option key={room.id} value={room.id}>
                       {roomLabel} ({room.assignments.length}/{room.capacity})
@@ -642,12 +647,12 @@ function DormitoryPage() {
       {/* Room Status - Grid Layout */}
       <div className="bg-white rounded-lg shadow p-6">
         <h2 className="text-xl font-semibold mb-4">
-          {selectedBuilding !== '' 
+          {selectedBuilding !== ''
             ? `${selectedBuildingData?.displayName} - ${filteredRooms.length} ${selectedBuildingData?.type === 'quarters' ? 'houses' : 'rooms'}`
             : 'Room Layout - Please select a building'
           }
         </h2>
-        
+
         {selectedBuilding === '' ? (
           <div className="text-center py-16 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
             <div className="text-6xl mb-4">🏢</div>
@@ -666,8 +671,8 @@ function DormitoryPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {filteredRooms.map(room => (
-              <RoomCard 
-                key={room.id} 
+              <RoomCard
+                key={room.id}
                 room={room}
                 onRemove={handleRemove}
                 isRemoving={isRemoving}
@@ -685,8 +690,8 @@ function DormitoryPage() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {unassignedTrainers.map((trainer: any) => (
-              <div 
-                key={trainer.id} 
+              <div
+                key={trainer.id}
                 className="p-4 border border-yellow-300 bg-yellow-50 rounded-lg"
               >
                 <div className="flex items-center space-x-3">
@@ -708,10 +713,10 @@ function DormitoryPage() {
 }
 
 // Stat Card Component
-function StatCard({ title, value, icon, color }: { 
-  title: string; 
-  value: string | number; 
-  icon: string; 
+function StatCard({ title, value, icon, color }: {
+  title: string;
+  value: string | number;
+  icon: string;
   color: string;
 }) {
   return (
@@ -730,7 +735,7 @@ function StatCard({ title, value, icon, color }: {
 }
 
 // Room Card Component
-function RoomCard({ room, onRemove, isRemoving }: { 
+function RoomCard({ room, onRemove, isRemoving }: {
   room: any;
   onRemove: (assignmentId: number) => void;
   isRemoving: boolean;
@@ -738,7 +743,7 @@ function RoomCard({ room, onRemove, isRemoving }: {
   const { id, roomNumber, capacity, assignments, buildingDisplayName, buildingColor, floorName, type } = room
   const currentOccupancy = assignments.length
   const occupancyText = `${currentOccupancy}/${capacity}`
-  
+
   // Create bed/occupant slots
   const slots = Array.from({ length: capacity }, (_, index) => {
     const assignment = assignments[index]
@@ -755,7 +760,7 @@ function RoomCard({ room, onRemove, isRemoving }: {
   if (capacity === 1) gridCols = 'grid-cols-1'
   if (capacity === 8) gridCols = 'grid-cols-4'
 
-  const roomLabel = type === 'quarters' 
+  const roomLabel = type === 'quarters'
     ? `House ${roomNumber}`
     : `Room ${roomNumber}`
 
@@ -773,7 +778,7 @@ function RoomCard({ room, onRemove, isRemoving }: {
       {/* Bed/Occupant Grid */}
       <div className={`grid ${gridCols} gap-2 mb-3`}>
         {slots.map((slot) => (
-          <OccupantSlot 
+          <OccupantSlot
             key={slot.slotNumber}
             slotNumber={slot.slotNumber}
             trainer={slot.trainer}
@@ -790,9 +795,9 @@ function RoomCard({ room, onRemove, isRemoving }: {
 }
 
 // Individual Occupant Slot Component
-function OccupantSlot({ slotNumber, trainer, assignment, occupied, onRemove, isRemoving, isQuarters }: { 
-  slotNumber: number; 
-  trainer: any; 
+function OccupantSlot({ slotNumber, trainer, assignment, occupied, onRemove, isRemoving, isQuarters }: {
+  slotNumber: number;
+  trainer: any;
   assignment: any;
   occupied: boolean;
   onRemove: (assignmentId: number) => void;
@@ -807,7 +812,7 @@ function OccupantSlot({ slotNumber, trainer, assignment, occupied, onRemove, isR
           {trainer.name}
         </p>
         <p className="text-xs text-gray-600 mt-1">{trainer.rank}</p>
-        
+
         {/* Remove button - shows on hover */}
         <button
           onClick={() => onRemove(assignment.id)}
@@ -820,7 +825,7 @@ function OccupantSlot({ slotNumber, trainer, assignment, occupied, onRemove, isR
       </div>
     )
   }
-  
+
   // Vacant slot - blue background
   return (
     <div className="bg-blue-50 border border-blue-200 rounded p-2 min-h-[60px] flex flex-col items-center justify-center transition-colors hover:bg-blue-100">

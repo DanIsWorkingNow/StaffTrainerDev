@@ -16,6 +16,7 @@ export type UserRoleData = {
   name: string
   role: UserRole
   roleLevel: number
+  rank?: string
   permissions: Permission[]
 }
 
@@ -39,7 +40,7 @@ export const getCurrentUserRole = createServerFn({ method: 'GET' }).handler(
     // Get trainer profile with role
     const { data: trainerData, error: trainerError } = await supabase
       .from('trainers')
-      .select('id, name, role_id')
+      .select('id, name, role_id, rank')
       .eq('user_id', user.id)
       .single()
 
@@ -86,6 +87,7 @@ export const getCurrentUserRole = createServerFn({ method: 'GET' }).handler(
       name: trainerData.name,
       role: roleData.name as UserRole,
       roleLevel: roleData.level,
+      rank: trainerData.rank,
       permissions,
     }
   }

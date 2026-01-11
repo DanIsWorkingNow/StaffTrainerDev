@@ -1,12 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { getSupabaseServerClient } from '~/utils/supabase'
+import { getCurrentUserRole } from '~/middleware/rbac'
 import { useState } from 'react'
 
 // Server functions
 const getReligiousActivityData = createServerFn({ method: 'GET' }).handler(async () => {
   const supabase = getSupabaseServerClient()
-  
+
   const { data: activities } = await supabase
     .from('religious_activities')
     .select('*')
@@ -20,22 +21,52 @@ const getReligiousActivityData = createServerFn({ method: 'GET' }).handler(async
   // Calculate stats
   const today = new Date().toISOString().split('T')[0]
   const todayActivities = activities?.filter(a => a.date === today) || []
-  
+
   // Get this week's activities
   const startOfWeek = new Date()
   const day = startOfWeek.getDay()
   const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1)
   startOfWeek.setDate(diff)
   startOfWeek.setHours(0, 0, 0, 0)
-  
+
   const endOfWeek = new Date(startOfWeek)
   endOfWeek.setDate(startOfWeek.getDate() + 6)
   endOfWeek.setHours(23, 59, 59, 999)
-  
+
   const thisWeekActivities = activities?.filter(a => {
     const activityDate = new Date(a.date)
     return activityDate >= startOfWeek && activityDate <= endOfWeek
   }) || []
+
+  // Filter for TRAINER role
+  const user = await getCurrentUserRole()
+  let visibleActivities = activities || []
+
+  if (user?.role === 'TRAINER') {
+    visibleActivities = visibleActivities.filter((activity: any) =>
+      activity.in_charge === user.name ||
+      activity.participants.includes(user.trainerId)
+    )
+  }
+
+  // Recalculate stats for trainer view
+  if (user?.role === 'TRAINER') {
+    const todayActivitiesFiltered = visibleActivities.filter(a => a.date === today)
+    const thisWeekActivitiesFiltered = visibleActivities.filter(a => {
+      const activityDate = new Date(a.date)
+      return activityDate >= startOfWeek && activityDate <= endOfWeek
+    })
+
+    return {
+      activities: visibleActivities,
+      trainers: trainers || [],
+      stats: {
+        activeParticipants: trainers?.length || 0,
+        todayActivities: todayActivitiesFiltered.length,
+        thisWeekActivities: thisWeekActivitiesFiltered.length,
+      }
+    }
+  }
 
   return {
     activities: activities || [],
@@ -57,7 +88,7 @@ const createActivity = createServerFn({ method: 'POST' })
   }) => data)
   .handler(async ({ data }) => {
     const supabase = getSupabaseServerClient()
-    
+
     const { error } = await supabase
       .from('religious_activities')
       .insert([data])
@@ -117,7 +148,7 @@ function ReligiousActivityPage() {
     const day = startOfWeek.getDay()
     const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1)
     startOfWeek.setDate(diff)
-    
+
     const activitiesArray: any[] = []
     for (let i = 0; i < 7; i++) {
       const date = new Date(startOfWeek)
@@ -133,7 +164,7 @@ function ReligiousActivityPage() {
     if (selectedParticipant === 'all') {
       return activities
     }
-    return activities.filter((a: any) => 
+    return activities.filter((a: any) =>
       a.in_charge === selectedParticipant || a.participants.some((p: number) => {
         const trainer = trainers.find((tr: any) => tr.id === p)
         return trainer?.name === selectedParticipant
@@ -157,15 +188,15 @@ function ReligiousActivityPage() {
     const startDay = firstDay.getDay()
 
     const days = []
-    
+
     for (let i = 0; i < startDay; i++) {
       days.push(null)
     }
-    
+
     for (let day = 1; day <= daysInMonth; day++) {
       days.push(day)
     }
-    
+
     return days
   }
 
@@ -179,22 +210,22 @@ function ReligiousActivityPage() {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatCard 
-          title="Today's Activities" 
-          value={stats.todayActivities} 
-          icon="📖" 
+        <StatCard
+          title="Today's Activities"
+          value={stats.todayActivities}
+          icon="📖"
           color="bg-teal-500"
         />
-        <StatCard 
-          title="This Week" 
-          value={stats.thisWeekActivities} 
-          icon="📅" 
+        <StatCard
+          title="This Week"
+          value={stats.thisWeekActivities}
+          icon="📅"
           color="bg-green-500"
         />
-        <StatCard 
-          title="Active Participants" 
-          value={stats.activeParticipants} 
-          icon="👥" 
+        <StatCard
+          title="Active Participants"
+          value={stats.activeParticipants}
+          icon="👥"
           color="bg-purple-500"
         />
       </div>
@@ -213,11 +244,11 @@ function ReligiousActivityPage() {
             >
               ◀ Previous
             </button>
-            
+
             <h2 className="text-2xl font-bold">
               {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
             </h2>
-            
+
             <button
               onClick={() => {
                 const newDate = new Date(currentDate)
@@ -233,25 +264,22 @@ function ReligiousActivityPage() {
           <div className="flex space-x-2">
             <button
               onClick={() => setView('week')}
-              className={`px-4 py-2 rounded transition ${
-                view === 'week' ? 'bg-teal-600 text-white' : 'bg-gray-200 hover:bg-gray-300'
-              }`}
+              className={`px-4 py-2 rounded transition ${view === 'week' ? 'bg-teal-600 text-white' : 'bg-gray-200 hover:bg-gray-300'
+                }`}
             >
               Week
             </button>
             <button
               onClick={() => setView('month')}
-              className={`px-4 py-2 rounded transition ${
-                view === 'month' ? 'bg-teal-600 text-white' : 'bg-gray-200 hover:bg-gray-300'
-              }`}
+              className={`px-4 py-2 rounded transition ${view === 'month' ? 'bg-teal-600 text-white' : 'bg-gray-200 hover:bg-gray-300'
+                }`}
             >
               Month
             </button>
             <button
               onClick={() => setView('participant-schedule')}
-              className={`px-4 py-2 rounded transition ${
-                view === 'participant-schedule' ? 'bg-teal-600 text-white' : 'bg-gray-200 hover:bg-gray-300'
-              }`}
+              className={`px-4 py-2 rounded transition ${view === 'participant-schedule' ? 'bg-teal-600 text-white' : 'bg-gray-200 hover:bg-gray-300'
+                }`}
             >
               Participant Schedule
             </button>
@@ -261,7 +289,7 @@ function ReligiousActivityPage() {
 
       {/* Conditional View Rendering */}
       {view === 'month' && (
-        <MonthView 
+        <MonthView
           getDaysInMonth={getDaysInMonth}
           getActivitiesForDate={getActivitiesForDate}
           handleDateClick={handleDateClick}
@@ -270,7 +298,7 @@ function ReligiousActivityPage() {
       )}
 
       {view === 'week' && (
-        <WeekView 
+        <WeekView
           activities={getWeekActivities()}
           currentDate={currentDate}
           trainers={trainers}
@@ -278,7 +306,7 @@ function ReligiousActivityPage() {
       )}
 
       {view === 'participant-schedule' && (
-        <ParticipantScheduleView 
+        <ParticipantScheduleView
           trainers={trainers}
           activities={getParticipantActivities()}
           selectedParticipant={selectedParticipant}
@@ -290,16 +318,16 @@ function ReligiousActivityPage() {
       {/* Always Show Activity List */}
       <div className="bg-white rounded-lg shadow p-6">
         <h3 className="text-xl font-semibold mb-4">
-          {view === 'week' ? 'This Week\'s Religious Activities' : 
-           view === 'participant-schedule' ? 'Participant\'s Activities' :
-           'Today\'s Religious Activities'}
+          {view === 'week' ? 'This Week\'s Religious Activities' :
+            view === 'participant-schedule' ? 'Participant\'s Activities' :
+              'Today\'s Religious Activities'}
         </h3>
-        
+
         {(() => {
-          const displayActivities = view === 'week' ? getWeekActivities() : 
-                                   view === 'participant-schedule' ? getParticipantActivities() :
-                                   getTodayActivities()
-          
+          const displayActivities = view === 'week' ? getWeekActivities() :
+            view === 'participant-schedule' ? getParticipantActivities() :
+              getTodayActivities()
+
           if (displayActivities.length === 0) {
             return <p className="text-gray-600">No activities scheduled</p>
           }
@@ -313,9 +341,9 @@ function ReligiousActivityPage() {
                       <h4 className="font-semibold text-gray-900 text-lg">{activity.activity}</h4>
                       {activity.displayDate && (
                         <p className="text-sm text-gray-600 mt-1">
-                          <strong>Date:</strong> {activity.displayDate.toLocaleDateString('en-US', { 
+                          <strong>Date:</strong> {activity.displayDate.toLocaleDateString('en-US', {
                             weekday: 'long',
-                            month: 'short', 
+                            month: 'short',
                             day: 'numeric',
                             year: 'numeric'
                           })}
@@ -353,10 +381,10 @@ function ReligiousActivityPage() {
 }
 
 // Stat Card Component
-function StatCard({ title, value, icon, color }: { 
-  title: string; 
-  value: number; 
-  icon: string; 
+function StatCard({ title, value, icon, color }: {
+  title: string;
+  value: number;
+  icon: string;
   color: string;
 }) {
   return (
@@ -375,27 +403,28 @@ function StatCard({ title, value, icon, color }: {
 }
 
 // Month View Component
-function MonthView({ 
-  getDaysInMonth, 
-  getActivitiesForDate, 
+function MonthView({
+  getDaysInMonth,
+  getActivitiesForDate,
   handleDateClick,
-  currentDate 
+  currentDate
 }: {
   getDaysInMonth: () => (number | null)[]
   getActivitiesForDate: (day: number) => any[]
   handleDateClick: (day: number) => void
   currentDate: Date
 }) {
+  const { user } = Route.useRouteContext()
+
   return (
     <div className="bg-white rounded-lg shadow p-6">
       {/* Day Headers */}
       <div className="grid grid-cols-7 gap-2 mb-4">
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => (
-          <div 
-            key={day} 
-            className={`text-center font-semibold py-2 ${
-              idx === 5 ? 'text-green-700' : 'text-gray-700'
-            }`}
+          <div
+            key={day}
+            className={`text-center font-semibold py-2 ${idx === 5 ? 'text-green-700' : 'text-gray-700'
+              }`}
           >
             {day}
             {idx === 5 && <span className="ml-1">🕌</span>}
@@ -411,7 +440,7 @@ function MonthView({
           }
 
           const dayActivities = getActivitiesForDate(day)
-          const isToday = 
+          const isToday =
             day === new Date().getDate() &&
             currentDate.getMonth() === new Date().getMonth() &&
             currentDate.getFullYear() === new Date().getFullYear()
@@ -423,34 +452,39 @@ function MonthView({
           return (
             <div
               key={day}
-              onClick={() => handleDateClick(day)}
+              onClick={() => {
+                // Only allow click if NOT a trainer
+                if (user?.role !== 'TRAINER') {
+                  handleDateClick(day)
+                }
+              }}
               className={`
-                aspect-square border-2 rounded-lg p-2 cursor-pointer transition-all
-                hover:shadow-lg hover:border-teal-500 hover:scale-105
-                ${isToday ? 'border-teal-600 bg-teal-50 ring-2 ring-teal-300' : 
-                  isFriday ? 'border-green-400 bg-green-50' : 
-                  'border-gray-200 bg-white'}
+                aspect-square border-2 rounded-lg p-2 transition-all
+                ${user?.role !== 'TRAINER'
+                  ? 'cursor-pointer hover:shadow-lg hover:border-teal-500 hover:scale-105'
+                  : 'cursor-default'}
+                ${isToday ? 'border-teal-600 bg-teal-50 ring-2 ring-teal-300' :
+                  isFriday ? 'border-green-400 bg-green-50' :
+                    'border-gray-200 bg-white'}
               `}
             >
-              <div className={`font-semibold mb-1 flex items-center justify-between ${
-                isToday ? 'text-teal-700' : 
-                isFriday ? 'text-green-700' : 
-                'text-gray-900'
-              }`}>
+              <div className={`font-semibold mb-1 flex items-center justify-between ${isToday ? 'text-teal-700' :
+                isFriday ? 'text-green-700' :
+                  'text-gray-900'
+                }`}>
                 <span>{day}</span>
                 {isFriday && <span className="text-xs">🕌</span>}
               </div>
-              
+
               {/* Activity indicators */}
               <div className="space-y-1">
                 {dayActivities.slice(0, 2).map((activity: any, idx: number) => (
                   <div
                     key={idx}
-                    className={`text-xs p-1 rounded truncate ${
-                      activity.activity.includes('Prayer') || activity.activity.includes('Jummah')
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-teal-100 text-teal-800'
-                    }`}
+                    className={`text-xs p-1 rounded truncate ${activity.activity.includes('Prayer') || activity.activity.includes('Jummah')
+                      ? 'bg-green-100 text-green-800'
+                      : 'bg-teal-100 text-teal-800'
+                      }`}
                     title={activity.activity}
                   >
                     🕌 {activity.activity.substring(0, 8)}...
@@ -493,17 +527,17 @@ function MonthView({
 }
 
 // Week View Component
-function WeekView({ 
-  activities, 
+function WeekView({
+  activities,
   currentDate,
-  trainers 
-}: { 
+  trainers
+}: {
   activities: any[]
   currentDate: Date
   trainers: any[]
 }) {
   const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-  
+
   const startOfWeek = new Date(currentDate)
   const day = startOfWeek.getDay()
   const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1)
@@ -522,42 +556,38 @@ function WeekView({
           const date = weekDates[idx]
           const dateStr = date.toISOString().split('T')[0]
           const dayActivities = activities.filter((a: any) => a.date === dateStr)
-          
+
           const isToday = date.toDateString() === new Date().toDateString()
           const isFriday = date.getDay() === 5
-          
+
           return (
-            <div 
-              key={day} 
-              className={`text-center p-3 rounded-lg ${
-                isToday ? 'bg-teal-50 ring-2 ring-teal-300' : 
+            <div
+              key={day}
+              className={`text-center p-3 rounded-lg ${isToday ? 'bg-teal-50 ring-2 ring-teal-300' :
                 isFriday ? 'bg-green-50' : ''
-              }`}
+                }`}
             >
-              <div className={`font-semibold ${
-                isToday ? 'text-teal-600' : 
-                isFriday ? 'text-green-600' : 
-                'text-gray-700'
-              }`}>
+              <div className={`font-semibold ${isToday ? 'text-teal-600' :
+                isFriday ? 'text-green-600' :
+                  'text-gray-700'
+                }`}>
                 {day}
                 {isFriday && <span className="ml-1">🕌</span>}
               </div>
-              <div className={`text-2xl font-bold mt-2 ${
-                isToday ? 'text-teal-600' : 
-                isFriday ? 'text-green-600' : 
-                'text-gray-900'
-              }`}>
+              <div className={`text-2xl font-bold mt-2 ${isToday ? 'text-teal-600' :
+                isFriday ? 'text-green-600' :
+                  'text-gray-900'
+                }`}>
                 {date.getDate()}
               </div>
               <div className="mt-4 space-y-2">
                 {dayActivities.map((activity: any) => (
-                  <div 
-                    key={activity.id} 
-                    className={`text-xs p-2 rounded border-l-4 ${
-                      activity.activity.includes('Prayer') || activity.activity.includes('Jummah')
-                        ? 'bg-green-100 text-green-800 border-green-500'
-                        : 'bg-teal-100 text-teal-800 border-teal-500'
-                    }`}
+                  <div
+                    key={activity.id}
+                    className={`text-xs p-2 rounded border-l-4 ${activity.activity.includes('Prayer') || activity.activity.includes('Jummah')
+                      ? 'bg-green-100 text-green-800 border-green-500'
+                      : 'bg-teal-100 text-teal-800 border-teal-500'
+                      }`}
                   >
                     <div className="font-semibold truncate">{activity.activity}</div>
                     <div className="text-xs mt-1">👤 {activity.in_charge}</div>
@@ -576,8 +606,8 @@ function WeekView({
 }
 
 // Participant Schedule View Component
-function ParticipantScheduleView({ 
-  trainers, 
+function ParticipantScheduleView({
+  trainers,
   activities,
   selectedParticipant,
   setSelectedParticipant,
@@ -624,7 +654,7 @@ function ParticipantScheduleView({
             {activities.filter((a: any) => {
               const activityDate = new Date(a.date)
               return activityDate.getMonth() === currentDate.getMonth() &&
-                     activityDate.getFullYear() === currentDate.getFullYear()
+                activityDate.getFullYear() === currentDate.getFullYear()
             }).length}
           </div>
         </div>
@@ -641,18 +671,17 @@ function ParticipantScheduleView({
         <h3 className="text-lg font-semibold mb-4">Active Participants</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {trainers.map(trainer => {
-            const participantActivities = activities.filter((a: any) => 
+            const participantActivities = activities.filter((a: any) =>
               a.in_charge === trainer.name || a.participants.includes(trainer.id)
             )
-            
+
             return (
-              <div 
-                key={trainer.id} 
-                className={`p-4 rounded-lg border-2 transition cursor-pointer ${
-                  selectedParticipant === trainer.name 
-                    ? 'border-teal-500 bg-teal-50' 
-                    : 'border-gray-200 hover:border-teal-300'
-                }`}
+              <div
+                key={trainer.id}
+                className={`p-4 rounded-lg border-2 transition cursor-pointer ${selectedParticipant === trainer.name
+                  ? 'border-teal-500 bg-teal-50'
+                  : 'border-gray-200 hover:border-teal-300'
+                  }`}
                 onClick={() => setSelectedParticipant(trainer.name)}
               >
                 <div className="flex items-center space-x-3">
@@ -677,11 +706,11 @@ function ParticipantScheduleView({
 }
 
 // Activity Modal Component
-function ActivityModal({ 
-  date, 
-  trainers, 
-  onClose, 
-  onSubmit 
+function ActivityModal({
+  date,
+  trainers,
+  onClose,
+  onSubmit
 }: {
   date: Date
   trainers: any[]
@@ -728,18 +757,17 @@ function ActivityModal({
   return (
     <>
       {/* Modal Backdrop - separate from modal content */}
-      <div 
+      <div
         className="fixed inset-0 bg-black bg-opacity-50 z-40"
         onClick={onClose}
       />
-      
+
       {/* Modal Content */}
       <div className="fixed inset-0 flex items-center justify-center p-4 z-50 pointer-events-none">
         <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto pointer-events-auto">
           {/* Modal Header */}
-          <div className={`border-b px-6 py-4 flex justify-between items-center sticky top-0 ${
-            isFriday ? 'bg-green-50' : 'bg-teal-50'
-          }`}>
+          <div className={`border-b px-6 py-4 flex justify-between items-center sticky top-0 ${isFriday ? 'bg-green-50' : 'bg-teal-50'
+            }`}>
             <h3 className="text-xl font-semibold text-gray-900">
               Schedule Religious Activity
               {isFriday && <span className="ml-2 text-green-600">🕌 Friday</span>}
@@ -760,7 +788,7 @@ function ActivityModal({
               <label className="block text-sm font-semibold text-gray-700 mb-2">Date</label>
               <input
                 type="text"
-                value={date.toLocaleDateString('en-US', { 
+                value={date.toLocaleDateString('en-US', {
                   year: 'numeric',
                   month: 'long',
                   day: 'numeric',

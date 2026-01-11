@@ -1,20 +1,47 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { getSupabaseServerClient } from '~/utils/supabase'
+import { getCurrentUserRole } from '~/middleware/rbac'
 import { useState } from 'react'
 
 // Server function to fetch events with trainer counts
 const getEventsWithTrainers = createServerFn({ method: 'GET' }).handler(async () => {
   const supabase = getSupabaseServerClient()
-  
+  const user = await getCurrentUserRole()
+
   const { data: events, error } = await supabase
     .from('events')
     .select('*')
     .order('start_date', { ascending: true })
 
+  let visibleEvents = events || []
+
+  // If user is TRAINER, only show events where they have a schedule
+  if (user?.role === 'TRAINER') {
+    const { data: mySchedules } = await supabase
+      .from('schedules')
+      .select('date')
+      .eq('trainer_id', user.trainerId)
+      .eq('status', 'scheduled')
+
+    const scheduleDates = new Set(mySchedules?.map(s => s.date))
+
+    visibleEvents = visibleEvents.filter(event => {
+      let curr = new Date(event.start_date)
+      const end = new Date(event.end_date)
+
+      while (curr <= end) {
+        const dateStr = curr.toISOString().split('T')[0]
+        if (scheduleDates.has(dateStr)) return true
+        curr.setDate(curr.getDate() + 1)
+      }
+      return false
+    })
+  }
+
   // For each event, get the count of unique trainers assigned
   const eventsWithTrainers = await Promise.all(
-    (events || []).map(async (event: any) => {
+    visibleEvents.map(async (event: any) => {
       const { data: schedules } = await supabase
         .from('schedules')
         .select(`
@@ -78,13 +105,14 @@ export const Route = createFileRoute('/_authed/events/')({
 
 function EventsPage() {
   const { events } = Route.useLoaderData()
+  const { user } = Route.useRouteContext()
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
 
   // Filter events
   const filteredEvents = events.filter((event: any) => {
     const matchesSearch = event.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         event.category.toLowerCase().includes(searchTerm.toLowerCase())
+      event.category.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesCategory = selectedCategory === 'all' || event.category === selectedCategory
     return matchesSearch && matchesCategory
   })
@@ -108,15 +136,17 @@ function EventsPage() {
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Event Management</h1>
             <p className="text-gray-600">Create and manage training events</p>
           </div>
-          <Link
-            to="/events/create"
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold flex items-center space-x-2"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            <span>Create Event</span>
-          </Link>
+          {user?.role !== 'TRAINER' && (
+            <Link
+              to="/events/create"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold flex items-center space-x-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              <span>Create Event</span>
+            </Link>
+          )}
         </div>
       </div>
 
@@ -150,22 +180,22 @@ function EventsPage() {
 
       {/* Event Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatCard 
-          title="Upcoming Events" 
-          value={upcomingEvents.length} 
-          icon="📅" 
+        <StatCard
+          title="Upcoming Events"
+          value={upcomingEvents.length}
+          icon="📅"
           color="bg-blue-500"
         />
-        <StatCard 
-          title="Ongoing Events" 
-          value={ongoingEvents.length} 
-          icon="🔄" 
+        <StatCard
+          title="Ongoing Events"
+          value={ongoingEvents.length}
+          icon="🔄"
           color="bg-green-500"
         />
-        <StatCard 
-          title="Past Events" 
-          value={pastEvents.length} 
-          icon="✅" 
+        <StatCard
+          title="Past Events"
+          value={pastEvents.length}
+          icon="✅"
           color="bg-gray-500"
         />
       </div>
@@ -201,10 +231,10 @@ function EventsPage() {
 }
 
 // Stat Card Component
-function StatCard({ title, value, icon, color }: { 
-  title: string; 
-  value: number; 
-  icon: string; 
+function StatCard({ title, value, icon, color }: {
+  title: string;
+  value: number;
+  icon: string;
   color: string;
 }) {
   return (
@@ -243,7 +273,7 @@ function EventCard({ event }: { event: any }) {
   const categoryColor = EVENT_COLORS.find(c => c.name === event.category)
   const startDate = new Date(event.start_date)
   const endDate = new Date(event.end_date)
-  
+
   // Calculate duration
   const duration = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
 
@@ -258,33 +288,33 @@ function EventCard({ event }: { event: any }) {
           <div className="flex-1">
             <div className="flex items-center space-x-3 mb-2">
               {/* Color indicator */}
-              <div 
+              <div
                 className={`w-4 h-4 rounded-full ${categoryColor?.bg || 'bg-gray-400'}`}
               />
               <h3 className="text-lg font-semibold text-gray-900">{event.name}</h3>
             </div>
-            
+
             <p className="text-sm text-gray-600 mb-3">{event.category}</p>
-            
+
             <div className="flex flex-wrap gap-4 text-sm text-gray-600 mb-3">
               <div className="flex items-center space-x-2">
                 <span>📅</span>
                 <span>
-                  {startDate.toLocaleDateString('en-US', { 
-                    month: 'short', 
+                  {startDate.toLocaleDateString('en-US', {
+                    month: 'short',
                     day: 'numeric',
                     year: 'numeric'
                   })}
                   {duration > 1 && (
-                    <> - {endDate.toLocaleDateString('en-US', { 
-                      month: 'short', 
+                    <> - {endDate.toLocaleDateString('en-US', {
+                      month: 'short',
                       day: 'numeric',
                       year: 'numeric'
                     })}</>
                   )}
                 </span>
               </div>
-              
+
               <div className="flex items-center space-x-2">
                 <span>⏱️</span>
                 <span>{duration} {duration === 1 ? 'day' : 'days'}</span>
@@ -303,7 +333,7 @@ function EventCard({ event }: { event: any }) {
                       {event.trainer_count} {event.trainer_count === 1 ? 'Trainer' : 'Trainers'} Assigned
                     </span>
                   </div>
-                  
+
                   {/* Trainer avatars preview */}
                   <div className="flex -space-x-2">
                     {event.trainer_preview?.slice(0, 3).map((trainer: any, index: number) => (
@@ -358,17 +388,17 @@ function EventCard({ event }: { event: any }) {
 
           {/* Arrow indicator */}
           <div className="ml-4">
-            <svg 
-              className="w-6 h-6 text-gray-400" 
-              fill="none" 
-              stroke="currentColor" 
+            <svg
+              className="w-6 h-6 text-gray-400"
+              fill="none"
+              stroke="currentColor"
               viewBox="0 0 24 24"
             >
-              <path 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
-                strokeWidth={2} 
-                d="M9 5l7 7-7 7" 
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 5l7 7-7 7"
               />
             </svg>
           </div>

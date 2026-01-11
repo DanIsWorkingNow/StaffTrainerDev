@@ -1,12 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { getSupabaseServerClient } from '~/utils/supabase'
+import { getCurrentUserRole } from '~/middleware/rbac'
 import { useState } from 'react'
 
 // Server functions
 const getPhysicalTrainingData = createServerFn({ method: 'GET' }).handler(async () => {
   const supabase = getSupabaseServerClient()
-  
+
   const { data: trainers } = await supabase
     .from('trainers')
     .select('*')
@@ -21,22 +22,52 @@ const getPhysicalTrainingData = createServerFn({ method: 'GET' }).handler(async 
   // Calculate stats
   const today = new Date().toISOString().split('T')[0]
   const todayTrainings = trainingSessions?.filter(t => t.date === today) || []
-  
+
   // Get this week's trainings
   const startOfWeek = new Date()
   const day = startOfWeek.getDay()
   const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1)
   startOfWeek.setDate(diff)
   startOfWeek.setHours(0, 0, 0, 0)
-  
+
   const endOfWeek = new Date(startOfWeek)
   endOfWeek.setDate(startOfWeek.getDate() + 6)
   endOfWeek.setHours(23, 59, 59, 999)
-  
+
   const thisWeekTrainings = trainingSessions?.filter(t => {
     const trainingDate = new Date(t.date)
     return trainingDate >= startOfWeek && trainingDate <= endOfWeek
   }) || []
+
+  // Filter for TRAINER role
+  const user = await getCurrentUserRole()
+  let visibleTrainingSessions = trainingSessions || []
+
+  if (user?.role === 'TRAINER') {
+    visibleTrainingSessions = visibleTrainingSessions.filter((session: any) =>
+      session.in_charge === user.name ||
+      session.participants.includes(user.trainerId)
+    )
+  }
+
+  // Recalculate stats for trainer view
+  if (user?.role === 'TRAINER') {
+    const todayTrainingsFiltered = visibleTrainingSessions.filter(t => t.date === today)
+    const thisWeekTrainingsFiltered = visibleTrainingSessions.filter(t => {
+      const trainingDate = new Date(t.date)
+      return trainingDate >= startOfWeek && trainingDate <= endOfWeek
+    })
+
+    return {
+      trainers: trainers || [],
+      trainingSessions: visibleTrainingSessions,
+      stats: {
+        activeTrainers: trainers?.length || 0,
+        todaySessions: todayTrainingsFiltered.length,
+        thisWeekSessions: thisWeekTrainingsFiltered.length,
+      }
+    }
+  }
 
   return {
     trainers: trainers || [],
@@ -59,7 +90,7 @@ const createTraining = createServerFn({ method: 'POST' })
   }) => data)
   .handler(async ({ data }) => {
     const supabase = getSupabaseServerClient()
-    
+
     const { error } = await supabase
       .from('physical_training')
       .insert([data])
@@ -121,7 +152,7 @@ function PhysicalTrainingPage() {
     const day = startOfWeek.getDay()
     const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1)
     startOfWeek.setDate(diff)
-    
+
     const trainings: any[] = []
     for (let i = 0; i < 7; i++) {
       const date = new Date(startOfWeek)
@@ -137,7 +168,7 @@ function PhysicalTrainingPage() {
     if (selectedTrainer === 'all') {
       return trainingSessions
     }
-    return trainingSessions.filter((t: any) => 
+    return trainingSessions.filter((t: any) =>
       t.in_charge === selectedTrainer || t.participants.some((p: number) => {
         const trainer = trainers.find((tr: any) => tr.id === p)
         return trainer?.name === selectedTrainer
@@ -161,17 +192,17 @@ function PhysicalTrainingPage() {
     const startDay = firstDay.getDay()
 
     const days = []
-    
+
     // Empty cells before month starts
     for (let i = 0; i < startDay; i++) {
       days.push(null)
     }
-    
+
     // Days of the month
     for (let day = 1; day <= daysInMonth; day++) {
       days.push(day)
     }
-    
+
     return days
   }
 
@@ -185,22 +216,22 @@ function PhysicalTrainingPage() {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatCard 
-          title="Active Trainers" 
-          value={stats.activeTrainers} 
-          icon="💪" 
+        <StatCard
+          title="Active Trainers"
+          value={stats.activeTrainers}
+          icon="💪"
           color="bg-orange-500"
         />
-        <StatCard 
-          title="Today's Sessions" 
-          value={stats.todaySessions} 
-          icon="📅" 
+        <StatCard
+          title="Today's Sessions"
+          value={stats.todaySessions}
+          icon="📅"
           color="bg-green-500"
         />
-        <StatCard 
-          title="This Week" 
-          value={stats.thisWeekSessions} 
-          icon="📊" 
+        <StatCard
+          title="This Week"
+          value={stats.thisWeekSessions}
+          icon="📊"
           color="bg-purple-500"
         />
       </div>
@@ -219,11 +250,11 @@ function PhysicalTrainingPage() {
             >
               ◀ Previous
             </button>
-            
+
             <h2 className="text-2xl font-bold">
               {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
             </h2>
-            
+
             <button
               onClick={() => {
                 const newDate = new Date(currentDate)
@@ -239,25 +270,22 @@ function PhysicalTrainingPage() {
           <div className="flex space-x-2">
             <button
               onClick={() => setView('week')}
-              className={`px-4 py-2 rounded transition ${
-                view === 'week' ? 'bg-orange-600 text-white' : 'bg-gray-200 hover:bg-gray-300'
-              }`}
+              className={`px-4 py-2 rounded transition ${view === 'week' ? 'bg-orange-600 text-white' : 'bg-gray-200 hover:bg-gray-300'
+                }`}
             >
               Week
             </button>
             <button
               onClick={() => setView('month')}
-              className={`px-4 py-2 rounded transition ${
-                view === 'month' ? 'bg-orange-600 text-white' : 'bg-gray-200 hover:bg-gray-300'
-              }`}
+              className={`px-4 py-2 rounded transition ${view === 'month' ? 'bg-orange-600 text-white' : 'bg-gray-200 hover:bg-gray-300'
+                }`}
             >
               Month
             </button>
             <button
               onClick={() => setView('trainer-schedule')}
-              className={`px-4 py-2 rounded transition ${
-                view === 'trainer-schedule' ? 'bg-orange-600 text-white' : 'bg-gray-200 hover:bg-gray-300'
-              }`}
+              className={`px-4 py-2 rounded transition ${view === 'trainer-schedule' ? 'bg-orange-600 text-white' : 'bg-gray-200 hover:bg-gray-300'
+                }`}
             >
               Trainer Schedule
             </button>
@@ -267,7 +295,7 @@ function PhysicalTrainingPage() {
 
       {/* Conditional View Rendering */}
       {view === 'month' && (
-        <MonthView 
+        <MonthView
           getDaysInMonth={getDaysInMonth}
           getTrainingsForDate={getTrainingsForDate}
           handleDateClick={handleDateClick}
@@ -276,7 +304,7 @@ function PhysicalTrainingPage() {
       )}
 
       {view === 'week' && (
-        <WeekView 
+        <WeekView
           trainingSessions={getWeekTrainings()}
           currentDate={currentDate}
           trainers={trainers}
@@ -284,7 +312,7 @@ function PhysicalTrainingPage() {
       )}
 
       {view === 'trainer-schedule' && (
-        <TrainerScheduleView 
+        <TrainerScheduleView
           trainers={trainers}
           trainingSessions={getTrainerTrainings()}
           selectedTrainer={selectedTrainer}
@@ -296,16 +324,16 @@ function PhysicalTrainingPage() {
       {/* Always Show Training Events List */}
       <div className="bg-white rounded-lg shadow p-6">
         <h3 className="text-xl font-semibold mb-4">
-          {view === 'week' ? 'This Week\'s Training Events' : 
-           view === 'trainer-schedule' ? 'Trainer\'s Training Events' :
-           'Today\'s Training Events'}
+          {view === 'week' ? 'This Week\'s Training Events' :
+            view === 'trainer-schedule' ? 'Trainer\'s Training Events' :
+              'Today\'s Training Events'}
         </h3>
-        
+
         {(() => {
-          const displayTrainings = view === 'week' ? getWeekTrainings() : 
-                                   view === 'trainer-schedule' ? getTrainerTrainings() :
-                                   getTodayTrainings()
-          
+          const displayTrainings = view === 'week' ? getWeekTrainings() :
+            view === 'trainer-schedule' ? getTrainerTrainings() :
+              getTodayTrainings()
+
           if (displayTrainings.length === 0) {
             return <p className="text-gray-600">No training scheduled</p>
           }
@@ -319,8 +347,8 @@ function PhysicalTrainingPage() {
                       <h4 className="font-semibold text-gray-900">{training.training_type}</h4>
                       {training.displayDate && (
                         <p className="text-sm text-gray-600 mt-1">
-                          <strong>Date:</strong> {training.displayDate.toLocaleDateString('en-US', { 
-                            month: 'short', 
+                          <strong>Date:</strong> {training.displayDate.toLocaleDateString('en-US', {
+                            month: 'short',
                             day: 'numeric',
                             year: 'numeric'
                           })}
@@ -361,7 +389,7 @@ function PhysicalTrainingPage() {
 }
 
 // Stat Card Component
-function StatCard({ title, value, icon, color }: { 
+function StatCard({ title, value, icon, color }: {
   title: string
   value: number
   icon: string
@@ -383,17 +411,19 @@ function StatCard({ title, value, icon, color }: {
 }
 
 // Month View Component
-function MonthView({ 
-  getDaysInMonth, 
-  getTrainingsForDate, 
+function MonthView({
+  getDaysInMonth,
+  getTrainingsForDate,
   handleDateClick,
-  currentDate 
+  currentDate
 }: {
   getDaysInMonth: () => (number | null)[]
   getTrainingsForDate: (day: number) => any[]
   handleDateClick: (day: number) => void
   currentDate: Date
 }) {
+  const { user } = Route.useRouteContext()
+
   return (
     <div className="bg-white rounded-lg shadow p-6">
       {/* Day Headers */}
@@ -413,7 +443,7 @@ function MonthView({
           }
 
           const trainings = getTrainingsForDate(day)
-          const isToday = 
+          const isToday =
             day === new Date().getDate() &&
             currentDate.getMonth() === new Date().getMonth() &&
             currentDate.getFullYear() === new Date().getFullYear()
@@ -421,17 +451,24 @@ function MonthView({
           return (
             <div
               key={day}
-              onClick={() => handleDateClick(day)}
+              onClick={() => {
+                // Only allow click if NOT a trainer
+                if (user?.role !== 'TRAINER') {
+                  handleDateClick(day)
+                }
+              }}
               className={`
-                aspect-square border-2 rounded-lg p-2 cursor-pointer transition-all
-                hover:shadow-lg hover:border-orange-500 hover:scale-105
+                aspect-square border-2 rounded-lg p-2 transition-all
+                ${user?.role !== 'TRAINER'
+                  ? 'cursor-pointer hover:shadow-lg hover:border-orange-500 hover:scale-105'
+                  : 'cursor-default'}
                 ${isToday ? 'border-orange-600 bg-orange-50' : 'border-gray-200 bg-white'}
               `}
             >
               <div className={`font-semibold mb-1 ${isToday ? 'text-orange-600' : 'text-gray-900'}`}>
                 {day}
               </div>
-              
+
               {/* Training indicators */}
               <div className="space-y-1">
                 {trainings.slice(0, 2).map((training: any, idx: number) => (
@@ -458,17 +495,17 @@ function MonthView({
 }
 
 // Week View Component
-function WeekView({ 
-  trainingSessions, 
+function WeekView({
+  trainingSessions,
   currentDate,
-  trainers 
-}: { 
+  trainers
+}: {
   trainingSessions: any[]
   currentDate: Date
   trainers: any[]
 }) {
   const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-  
+
   const startOfWeek = new Date(currentDate)
   const day = startOfWeek.getDay()
   const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1)
@@ -487,9 +524,9 @@ function WeekView({
           const date = weekDates[idx]
           const dateStr = date.toISOString().split('T')[0]
           const dayTrainings = trainingSessions.filter((t: any) => t.date === dateStr)
-          
+
           const isToday = date.toDateString() === new Date().toDateString()
-          
+
           return (
             <div key={day} className={`text-center p-3 rounded-lg ${isToday ? 'bg-orange-50' : ''}`}>
               <div className={`font-semibold ${isToday ? 'text-orange-600' : 'text-gray-700'}`}>
@@ -500,8 +537,8 @@ function WeekView({
               </div>
               <div className="mt-4 space-y-2">
                 {dayTrainings.map((training: any) => (
-                  <div 
-                    key={training.id} 
+                  <div
+                    key={training.id}
                     className="bg-orange-100 text-orange-800 text-xs p-2 rounded border-l-4 border-orange-500"
                   >
                     <div className="font-semibold truncate">{training.training_type}</div>
@@ -522,8 +559,8 @@ function WeekView({
 }
 
 // Trainer Schedule View Component
-function TrainerScheduleView({ 
-  trainers, 
+function TrainerScheduleView({
+  trainers,
   trainingSessions,
   selectedTrainer,
   setSelectedTrainer,
@@ -570,7 +607,7 @@ function TrainerScheduleView({
             {trainingSessions.filter((t: any) => {
               const trainingDate = new Date(t.date)
               return trainingDate.getMonth() === currentDate.getMonth() &&
-                     trainingDate.getFullYear() === currentDate.getFullYear()
+                trainingDate.getFullYear() === currentDate.getFullYear()
             }).length}
           </div>
         </div>
@@ -587,18 +624,17 @@ function TrainerScheduleView({
         <h3 className="text-lg font-semibold mb-4">Active Trainers</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {trainers.map(trainer => {
-            const trainerSessions = trainingSessions.filter((t: any) => 
+            const trainerSessions = trainingSessions.filter((t: any) =>
               t.in_charge === trainer.name || t.participants.includes(trainer.id)
             )
-            
+
             return (
-              <div 
-                key={trainer.id} 
-                className={`p-4 rounded-lg border-2 transition cursor-pointer ${
-                  selectedTrainer === trainer.name 
-                    ? 'border-orange-500 bg-orange-50' 
-                    : 'border-gray-200 hover:border-orange-300'
-                }`}
+              <div
+                key={trainer.id}
+                className={`p-4 rounded-lg border-2 transition cursor-pointer ${selectedTrainer === trainer.name
+                  ? 'border-orange-500 bg-orange-50'
+                  : 'border-gray-200 hover:border-orange-300'
+                  }`}
                 onClick={() => setSelectedTrainer(trainer.name)}
               >
                 <div className="flex items-center space-x-3">
@@ -623,11 +659,11 @@ function TrainerScheduleView({
 }
 
 // Assignment Modal Component
-function AssignmentModal({ 
-  date, 
-  trainers, 
-  onClose, 
-  onSubmit 
+function AssignmentModal({
+  date,
+  trainers,
+  onClose,
+  onSubmit
 }: {
   date: Date
   trainers: any[]
@@ -673,11 +709,11 @@ function AssignmentModal({
   return (
     <>
       {/* Modal Backdrop - separate from modal content */}
-      <div 
+      <div
         className="fixed inset-0 bg-black bg-opacity-50 z-40"
         onClick={onClose}
       />
-      
+
       {/* Modal Content */}
       <div className="fixed inset-0 flex items-center justify-center p-4 z-50 pointer-events-none">
         <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto pointer-events-auto">
@@ -702,7 +738,7 @@ function AssignmentModal({
               <label className="block text-sm font-semibold text-gray-700 mb-2">Date</label>
               <input
                 type="text"
-                value={date.toLocaleDateString('en-US', { 
+                value={date.toLocaleDateString('en-US', {
                   year: 'numeric',
                   month: 'long',
                   day: 'numeric'

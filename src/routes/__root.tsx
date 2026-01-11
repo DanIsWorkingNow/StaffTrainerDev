@@ -14,9 +14,37 @@ import { NotFound } from '../components/NotFound'
 import appCss from '../styles/app.css?url'
 import { seo } from '../utils/seo'
 import { getSupabaseServerClient } from '../utils/supabase'
+import { getCurrentUserRole } from '../middleware/rbac'
 
 // UPDATED: Enhanced fetchUser to include more user data
-const fetchUser = createServerFn({ method: 'GET' }).handler(async () => {
+export interface UserContext {
+  id: string
+  email: string
+  name?: string
+  role?: string
+  rank?: string
+  region?: string
+  status?: string
+}
+
+const fetchUser = createServerFn({ method: 'GET' }).handler(async (): Promise<UserContext | null> => {
+  // 1. First try to get authoritative RBAC role data (from trainers & roles tables)
+  const rbacUser = await getCurrentUserRole()
+
+  if (rbacUser) {
+    console.log('DEBUG: RBAC User found', { role: rbacUser.role })
+    return {
+      id: rbacUser.userId,
+      email: rbacUser.email,
+      name: rbacUser.name,
+      role: rbacUser.role, // This comes from roles table
+      rank: rbacUser.rank,
+      // Status and region are not in rbacUser yet, if needed we can fetch or default
+      status: 'active',
+    }
+  }
+
+  // 2. Fallback to users table if not a trainer (e.g. basic user or broken link)
   const supabase = getSupabaseServerClient()
   const { data: { user }, error: _error } = await supabase.auth.getUser()
 
@@ -24,14 +52,20 @@ const fetchUser = createServerFn({ method: 'GET' }).handler(async () => {
     return null
   }
 
-  // Fetch additional user data from users table
   const { data: userData } = await supabase
     .from('users')
     .select('id, email, name, role, rank, region, status')
-    .eq('email', user.email)  // Match by email instead!
+    .eq('email', user.email)
     .single()
 
-  return userData || {
+  console.log('DEBUG: Fallback User data', { role: userData?.role })
+
+  if (userData) {
+    return userData as UserContext
+  }
+
+  // If no RBAC user and no user in 'users' table, return basic info from auth
+  return {
     id: user.id,
     email: user.email,
   }
@@ -129,10 +163,18 @@ function RootDocument({ children }: { children: React.ReactNode }) {
                 <NavLink to="/" label="Home" icon="🏠" />
                 <NavLink to="/schedule" label="Schedule" icon="📅" />
                 <NavLink to="/events" label="Events" icon="📋" />
-                <NavLink to="/dormitory" label="Dormitory" icon="🏢" />
+                {user?.role !== 'TRAINER' && (
+                  <>
+                    <NavLink to="/dormitory" label="Dormitory" icon="🏢" />
+                  </>
+                )}
                 <NavLink to="/physical-training" label="PT" icon="💪" />
                 <NavLink to="/religious-activity" label="Religious" icon="📖" />
-                <NavLink to="/trainer-overview" label="Overview" icon="👥" />
+                {user?.role !== 'TRAINER' && (
+                  <>
+                    <NavLink to="/trainer-overview" label="Overview" icon="👥" />
+                  </>
+                )}
               </div>
 
               {/* UPDATED: User Menu with Profile Dropdown */}
@@ -161,7 +203,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
                           <p className="text-sm font-semibold text-gray-900 truncate">{user.email}</p>
                           <p className="text-xs text-gray-500 mt-1">Signed in</p>
                         </div>
-                        
+
                         <Link
                           to="/profile"
                           className="flex items-center space-x-3 px-4 py-3 hover:bg-gray-100 transition text-gray-700"
@@ -169,9 +211,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
                           <span className="text-xl">👤</span>
                           <span className="font-medium">My Profile</span>
                         </Link>
-                        
+
                         <div className="border-t border-gray-200 my-2"></div>
-                        
+
                         <Link
                           to="/logout"
                           className="flex items-center space-x-3 px-4 py-3 hover:bg-red-50 transition text-red-600"
@@ -183,14 +225,14 @@ function RootDocument({ children }: { children: React.ReactNode }) {
                     </div>
                   </>
                 ) : (
-                  <Link 
-                    to="/login" 
+                  <Link
+                    to="/login"
                     className="bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded text-sm"
                   >
                     Login
                   </Link>
                 )}
-                
+
                 {/* Mobile Menu Button */}
                 <button
                   className="md:hidden p-2"
@@ -223,59 +265,63 @@ function RootDocument({ children }: { children: React.ReactNode }) {
                           </div>
                         </div>
                       </div>
-                      
-                      <MobileNavLink 
-                        to="/profile" 
-                        label="My Profile" 
+
+                      <MobileNavLink
+                        to="/profile"
+                        label="My Profile"
                         icon="👤"
                         onClick={() => setIsMobileMenuOpen(false)}
                       />
                     </>
                   )}
-                  
+
                   {/* Existing Mobile Navigation Links */}
-                  <MobileNavLink 
-                    to="/" 
-                    label="Home" 
+                  <MobileNavLink
+                    to="/"
+                    label="Home"
                     icon="🏠"
                     onClick={() => setIsMobileMenuOpen(false)}
                   />
-                  <MobileNavLink 
-                    to="/schedule" 
-                    label="Schedule" 
+                  <MobileNavLink
+                    to="/schedule"
+                    label="Schedule"
                     icon="📅"
                     onClick={() => setIsMobileMenuOpen(false)}
                   />
-                  <MobileNavLink 
-                    to="/events" 
-                    label="Events" 
+                  <MobileNavLink
+                    to="/events"
+                    label="Events"
                     icon="📋"
                     onClick={() => setIsMobileMenuOpen(false)}
                   />
-                  <MobileNavLink 
-                    to="/dormitory" 
-                    label="Dormitory" 
-                    icon="🏢"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  />
-                  <MobileNavLink 
-                    to="/physical-training" 
-                    label="Physical Training" 
+                  {user?.role !== 'TRAINER' && (
+                    <MobileNavLink
+                      to="/dormitory"
+                      label="Dormitory"
+                      icon="🏢"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                    />
+                  )}
+                  <MobileNavLink
+                    to="/physical-training"
+                    label="Physical Training"
                     icon="💪"
                     onClick={() => setIsMobileMenuOpen(false)}
                   />
-                  <MobileNavLink 
-                    to="/religious-activity" 
-                    label="Religious Activity" 
+                  <MobileNavLink
+                    to="/religious-activity"
+                    label="Religious Activity"
                     icon="📖"
                     onClick={() => setIsMobileMenuOpen(false)}
                   />
-                  <MobileNavLink 
-                    to="/trainer-overview" 
-                    label="Trainer Overview" 
-                    icon="👥"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  />
+                  {user?.role !== 'TRAINER' && (
+                    <MobileNavLink
+                      to="/trainer-overview"
+                      label="Trainer Overview"
+                      icon="👥"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                    />
+                  )}
                 </div>
               </div>
             )}
@@ -312,12 +358,12 @@ function NavLink({ to, label, icon }: { to: string; label: string; icon: string 
 }
 
 // UPDATED: Mobile Navigation Link Component with onClick support
-function MobileNavLink({ 
-  to, 
-  label, 
+function MobileNavLink({
+  to,
+  label,
   icon,
-  onClick 
-}: { 
+  onClick
+}: {
   to: string
   label: string
   icon: string

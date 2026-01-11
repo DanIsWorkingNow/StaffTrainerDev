@@ -6,7 +6,7 @@ import { useState } from 'react'
 // Server function to fetch trainers
 const getTrainers = createServerFn({ method: 'GET' }).handler(async () => {
   const supabase = getSupabaseServerClient()
-  
+
   const { data: trainers } = await supabase
     .from('trainers')
     .select('*')
@@ -29,7 +29,7 @@ const createEventWithTrainers = createServerFn({ method: 'POST' })
   }) => data)
   .handler(async ({ data }) => {
     const supabase = getSupabaseServerClient()
-    
+
     // Create the event
     const { data: event, error: eventError } = await supabase
       .from('events')
@@ -53,11 +53,11 @@ const createEventWithTrainers = createServerFn({ method: 'POST' })
       const scheduleEntries = []
       const startDate = new Date(data.start_date)
       const endDate = new Date(data.end_date)
-      
+
       // Loop through each date in the event range
       for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
         const dateStr = date.toISOString().split('T')[0]
-        
+
         // Create schedule entry for each trainer
         for (const trainerId of data.trainer_ids) {
           scheduleEntries.push({
@@ -120,6 +120,12 @@ const COLOR_PALETTE = [
 ]
 
 export const Route = createFileRoute('/_authed/events/create')({
+  beforeLoad: ({ context }) => {
+    // Check if user exists and has TRAINER role
+    if (context.user?.role === 'TRAINER') {
+      throw new Error('Unauthorized Access: Trainers cannot create events')
+    }
+  },
   loader: async () => await getTrainers(),
   component: CreateEventPage,
 })
@@ -127,7 +133,7 @@ export const Route = createFileRoute('/_authed/events/create')({
 function CreateEventPage() {
   const navigate = useNavigate()
   const { trainers } = Route.useLoaderData()
-  
+
   const [formData, setFormData] = useState({
     name: '',
     category: EVENT_CATEGORIES[0].name,
@@ -203,7 +209,7 @@ function CreateEventPage() {
       }
 
       const result = await createEventWithTrainers({ data: formData })
-      
+
       if (result.error) {
         setError(result.error)
         setIsSubmitting(false)
@@ -279,7 +285,7 @@ function CreateEventPage() {
               {/* Current Selected Color Display */}
               <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg border">
                 <span className="text-sm text-gray-600">Selected Color:</span>
-                <div 
+                <div
                   className="w-10 h-10 rounded-lg border-2 border-gray-300 shadow-sm"
                   style={{ backgroundColor: formData.color }}
                 />
@@ -297,11 +303,10 @@ function CreateEventPage() {
                       key={colorOption.value}
                       type="button"
                       onClick={() => handleColorSelect(colorOption.value)}
-                      className={`w-10 h-10 rounded-lg transition-all hover:scale-110 ${
-                        formData.color === colorOption.value
+                      className={`w-10 h-10 rounded-lg transition-all hover:scale-110 ${formData.color === colorOption.value
                           ? 'ring-2 ring-offset-2 ring-gray-900 shadow-lg'
                           : 'hover:shadow-md'
-                      }`}
+                        }`}
                       style={{ backgroundColor: colorOption.value }}
                       title={colorOption.name}
                     />
@@ -378,7 +383,7 @@ function CreateEventPage() {
                 </button>
               </div>
             </div>
-            
+
             {/* Selected Trainers Summary */}
             {selectedTrainers.length > 0 && (
               <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -428,19 +433,18 @@ function CreateEventPage() {
 
             <div className="border rounded-lg p-4 bg-gray-50">
               <p className="text-sm text-gray-600 mb-3">
-                Select trainers who will be assigned to this event 
+                Select trainers who will be assigned to this event
                 {formData.trainer_ids.length === 0 && ' (none selected)'}
               </p>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-80 overflow-y-auto">
                 {trainers.map((trainer: any) => (
                   <label
                     key={trainer.id}
-                    className={`flex items-center space-x-3 p-3 rounded-lg border-2 cursor-pointer transition ${
-                      formData.trainer_ids.includes(trainer.id)
+                    className={`flex items-center space-x-3 p-3 rounded-lg border-2 cursor-pointer transition ${formData.trainer_ids.includes(trainer.id)
                         ? 'border-blue-500 bg-blue-50'
                         : 'border-gray-200 bg-white hover:border-gray-300'
-                    }`}
+                      }`}
                   >
                     <input
                       type="checkbox"
@@ -459,7 +463,7 @@ function CreateEventPage() {
                   </label>
                 ))}
               </div>
-              
+
               {trainers.length === 0 && (
                 <p className="text-sm text-gray-500 text-center py-4">
                   No active trainers available

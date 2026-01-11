@@ -8,7 +8,7 @@ const getTrainerOverviewData = createServerFn({ method: 'GET' })
   .inputValidator((data: { trainerId?: number; month: number; year: number }) => data)
   .handler(async ({ data }) => {
     const supabase = getSupabaseServerClient()
-    
+
     // Get all trainers
     const { data: trainers } = await supabase
       .from('trainers')
@@ -62,13 +62,19 @@ const getTrainerOverviewData = createServerFn({ method: 'GET' })
   })
 
 export const Route = createFileRoute('/_authed/trainer-overview/')({
+  beforeLoad: ({ context }) => {
+    // Check if user exists and has TRAINER role
+    if (context.user?.role === 'TRAINER') {
+      throw new Error('Unauthorized Access: Trainers cannot access overview')
+    }
+  },
   loader: async () => {
     const now = new Date()
-    return await getTrainerOverviewData({ 
-      data: { 
-        month: now.getMonth(), 
-        year: now.getFullYear() 
-      } 
+    return await getTrainerOverviewData({
+      data: {
+        month: now.getMonth(),
+        year: now.getFullYear()
+      }
     })
   },
   component: TrainerOverviewPage,
@@ -80,7 +86,7 @@ function TrainerOverviewPage() {
   const [selectedTrainer, setSelectedTrainer] = useState<number | null>(null)
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
-  
+
   // State for fetched data
   const [religiousActivities, setReligiousActivities] = useState(initialData.religiousActivities)
   const [physicalTraining, setPhysicalTraining] = useState(initialData.physicalTraining)
@@ -89,8 +95,8 @@ function TrainerOverviewPage() {
 
   // Reload data when trainer or month changes
   const reloadData = async (trainerId: number | null, month: number, year: number) => {
-    const data = await getTrainerOverviewData({ 
-      data: { trainerId: trainerId || undefined, month, year } 
+    const data = await getTrainerOverviewData({
+      data: { trainerId: trainerId || undefined, month, year }
     })
     setReligiousActivities(data.religiousActivities)
     setPhysicalTraining(data.physicalTraining)
@@ -134,7 +140,7 @@ function TrainerOverviewPage() {
 
     // Count religious activities
     const religious = religiousActivities.filter((activity: any) =>
-      activity.in_charge === trainer?.name || 
+      activity.in_charge === trainer?.name ||
       activity.participants.includes(selectedTrainer)
     ).length
 
@@ -151,12 +157,12 @@ function TrainerOverviewPage() {
 
     // Count physical training
     const physical = physicalTraining.filter((training: any) =>
-      training.in_charge === trainer?.name || 
+      training.in_charge === trainer?.name ||
       training.participants.includes(selectedTrainer)
     ).length
 
     // Count leadership roles (where trainer is in_charge)
-    const leadership = 
+    const leadership =
       religiousActivities.filter((a: any) => a.in_charge === trainer?.name).length +
       physicalTraining.filter((t: any) => t.in_charge === trainer?.name).length
 
@@ -198,7 +204,7 @@ function TrainerOverviewPage() {
       const eventStart = new Date(event.start_date)
       const eventEnd = new Date(event.end_date)
       const checkDate = new Date(dateStr)
-      
+
       if (checkDate >= eventStart && checkDate <= eventEnd) {
         activities.push({
           type: 'Event',
@@ -246,15 +252,15 @@ function TrainerOverviewPage() {
     const startDay = firstDay.getDay()
 
     const days = []
-    
+
     for (let i = 0; i < startDay; i++) {
       days.push(null)
     }
-    
+
     for (let day = 1; day <= daysInMonth; day++) {
       days.push(day)
     }
-    
+
     return days
   }
 
@@ -354,15 +360,14 @@ function TrainerOverviewPage() {
           {/* Calendar View */}
           <div className="bg-white rounded-lg shadow p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Monthly Calendar</h3>
-            
+
             {/* Day Headers */}
             <div className="grid grid-cols-7 gap-2 mb-4">
               {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => (
-                <div 
-                  key={day} 
-                  className={`text-center font-semibold py-2 ${
-                    idx === 5 ? 'text-teal-700' : 'text-gray-700'
-                  }`}
+                <div
+                  key={day}
+                  className={`text-center font-semibold py-2 ${idx === 5 ? 'text-teal-700' : 'text-gray-700'
+                    }`}
                 >
                   {day}
                   {idx === 5 && <span className="ml-1">🕌</span>}
@@ -378,7 +383,7 @@ function TrainerOverviewPage() {
                 }
 
                 const dayActivities = getActivitiesForDate(day)
-                const isToday = 
+                const isToday =
                   day === new Date().getDate() &&
                   currentDate.getMonth() === new Date().getMonth() &&
                   currentDate.getFullYear() === new Date().getFullYear()
@@ -399,21 +404,20 @@ function TrainerOverviewPage() {
                     className={`
                       aspect-square border-2 rounded-lg p-2 cursor-pointer transition-all
                       hover:shadow-lg hover:scale-105
-                      ${isToday ? 'border-blue-600 bg-blue-50 ring-2 ring-blue-300' : 
+                      ${isToday ? 'border-blue-600 bg-blue-50 ring-2 ring-blue-300' :
                         isFriday ? 'border-teal-400 bg-teal-50' :
-                        isSelectedDate ? 'border-purple-600 bg-purple-50' :
-                        'border-gray-200 bg-white'}
+                          isSelectedDate ? 'border-purple-600 bg-purple-50' :
+                            'border-gray-200 bg-white'}
                     `}
                   >
-                    <div className={`font-semibold mb-1 text-sm ${
-                      isToday ? 'text-blue-700' : 
+                    <div className={`font-semibold mb-1 text-sm ${isToday ? 'text-blue-700' :
                       isFriday ? 'text-teal-700' :
-                      isSelectedDate ? 'text-purple-700' :
-                      'text-gray-900'
-                    }`}>
+                        isSelectedDate ? 'text-purple-700' :
+                          'text-gray-900'
+                      }`}>
                       {day}
                     </div>
-                    
+
                     <div className="space-y-1">
                       {dayActivities.slice(0, 2).map((activity: any, idx: number) => (
                         <div
@@ -423,7 +427,7 @@ function TrainerOverviewPage() {
                           title={`${activity.activity} (${activity.role})`}
                         >
                           {activity.type === 'Religious Activity' ? '🕌' :
-                           activity.type === 'Physical Training' ? '💪' : '📅'}
+                            activity.type === 'Physical Training' ? '💪' : '📅'}
                         </div>
                       ))}
                       {dayActivities.length > 2 && (
@@ -461,7 +465,7 @@ function TrainerOverviewPage() {
             <div className="bg-white rounded-lg shadow p-6">
               <h3 className="text-xl font-semibold text-gray-900 mb-4">
                 Daily Schedule for {trainer.rank} {trainer.name} - {' '}
-                {selectedDate.toLocaleDateString('en-US', { 
+                {selectedDate.toLocaleDateString('en-US', {
                   weekday: 'long',
                   year: 'numeric',
                   month: 'long',
@@ -471,7 +475,7 @@ function TrainerOverviewPage() {
 
               {(() => {
                 const activities = getActivitiesForDate(selectedDate.getDate())
-                
+
                 if (activities.length === 0) {
                   return (
                     <div className="text-center py-8 text-gray-500">
@@ -487,7 +491,7 @@ function TrainerOverviewPage() {
                       <div
                         key={idx}
                         className="border-l-4 p-4 rounded-r-lg"
-                        style={{ 
+                        style={{
                           borderLeftColor: activity.color,
                           backgroundColor: activity.color + '10'
                         }}
@@ -497,7 +501,7 @@ function TrainerOverviewPage() {
                             <div className="flex items-center gap-2 mb-2">
                               <span className="text-2xl">
                                 {activity.type === 'Religious Activity' ? '🕌' :
-                                 activity.type === 'Physical Training' ? '💪' : '📅'}
+                                  activity.type === 'Physical Training' ? '💪' : '📅'}
                               </span>
                               <h4 className="font-semibold text-gray-900 text-lg">
                                 {activity.activity}
@@ -509,7 +513,7 @@ function TrainerOverviewPage() {
                               <p><strong>Role:</strong> {activity.role}</p>
                             </div>
                           </div>
-                          <div 
+                          <div
                             className="text-xs px-3 py-1 rounded-full text-white font-semibold"
                             style={{ backgroundColor: activity.color }}
                           >
@@ -564,12 +568,12 @@ function TrainerOverviewPage() {
 }
 
 // Summary Card Component
-function SummaryCard({ 
-  title, 
-  value, 
-  icon, 
-  color 
-}: { 
+function SummaryCard({
+  title,
+  value,
+  icon,
+  color
+}: {
   title: string
   value: number
   icon: string
