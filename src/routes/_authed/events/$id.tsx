@@ -8,19 +8,29 @@ const getEventWithTrainers = createServerFn({ method: 'GET' })
     const supabase = getSupabaseServerClient()
 
     // Get the event details
-    const { data: event } = await supabase
+    const { data: event, error: eventError } = await supabase
       .from('events')
       .select('*')
       .eq('id', id)
       .single()
 
-    // Get all trainers assigned to this event through schedules
-    const { data: schedules } = await supabase
+    if (eventError || !event) {
+      console.error('❌ Event not found:', eventError)
+      return {
+        event: null,
+        assignedTrainers: [],
+        error: 'Event not found'
+      }
+    }
+
+    console.log('📅 Event loaded:', event.name, '(ID:', id, ')')
+    console.log('📆 Date range:', event.start_date, 'to', event.end_date)
+
+    // ✅ FIXED: Now filters by event name in database query
+    const { data: schedules, error: schedulesError } = await supabase
       .from('schedules')
       .select(`
         trainer_id,
-        notes,
-        status,
         trainers (
           id,
           name,
@@ -31,33 +41,49 @@ const getEventWithTrainers = createServerFn({ method: 'GET' })
       `)
       .gte('date', event.start_date)
       .lte('date', event.end_date)
+      .ilike('notes', `%${event.name}%`)  // ✅ FIX: Filter by event name in DB
+      .eq('status', 'scheduled')          // ✅ FIX: Only scheduled entries
 
-    // Extract unique trainers
-    const uniqueTrainerIds = new Set()
-    const assignedTrainers = schedules
-      ?.filter((schedule: any) => {
-        // Robust check: matches event name in notes OR is 'scheduled' during this time
-        const matchesEvent = schedule.notes?.includes(event.name) ||
-          schedule.notes?.includes('Assigned to:') ||
-          false
+    console.log('📋 Schedules query returned:', schedules?.length || 0, 'entries')
 
-        // Accept matching note OR explicit 'scheduled' or 'in progress' status
-        // Since we already filtered schedules by date range, any scheduled block is likely an assignment
-        // especially if no conflicting notes exist.
-        const isValidAssignment = matchesEvent ||
-          schedule.status === 'scheduled' ||
-          schedule.status === 'in progress'
+    if (schedulesError) {
+      console.error('❌ Schedules query error:', schedulesError)
+      return {
+        event,
+        assignedTrainers: [],
+        error: schedulesError.message
+      }
+    }
 
-        if (isValidAssignment && !uniqueTrainerIds.has(schedule.trainer_id)) {
-          uniqueTrainerIds.add(schedule.trainer_id)
-          return true
+    // ✅ FIXED: Simplified deduplication logic with null checks
+    const trainersMap = new Map()
+
+    if (schedules && schedules.length > 0) {
+      schedules.forEach((schedule: any) => {
+        // Validate trainer data exists (handles JOIN failures)
+        if (schedule.trainers && schedule.trainer_id) {
+          // Only add if not already in map (removes duplicates)
+          if (!trainersMap.has(schedule.trainer_id)) {
+            trainersMap.set(schedule.trainer_id, schedule.trainers)
+            console.log('✅ Added trainer:', schedule.trainers.name, '(ID:', schedule.trainer_id, ')')
+          }
+        } else {
+          console.warn('⚠️ Schedule missing trainer data:', {
+            trainer_id: schedule.trainer_id,
+            has_trainer_object: !!schedule.trainers
+          })
         }
-        return false
       })
-      .map((schedule: any) => schedule.trainers)
-      .filter(Boolean) || []
+    } else {
+      console.log('ℹ️ No schedules found for this event')
+    }
 
-    return { event, assignedTrainers }
+    const assignedTrainers = Array.from(trainersMap.values())
+
+    console.log('👥 Final trainer count:', assignedTrainers.length)
+    console.log('📝 Trainer names:', assignedTrainers.map(t => t.name).join(', '))
+
+    return { event, assignedTrainers, error: null }
   })
 
 export const Route = createFileRoute('/_authed/events/$id')({
@@ -67,6 +93,24 @@ export const Route = createFileRoute('/_authed/events/$id')({
 
 function EventDetailPage() {
   const { event, assignedTrainers } = Route.useLoaderData()
+
+  // Handle error case
+  if (!event) {
+    return (
+      <div className="max-w-4xl mx-auto p-6">
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+          <p className="font-semibold">Error Loading Event</p>
+          <p className="text-sm mt-1">The event could not be found or loaded.</p>
+        </div>
+        <button
+          onClick={() => window.history.back()}
+          className="mt-4 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+        >
+          ← Go Back
+        </button>
+      </div>
+    )
+  }
 
   // Calculate event duration
   const startDate = new Date(event.start_date)
@@ -86,6 +130,13 @@ function EventDetailPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
+      {/* Debug Info - Remove after testing */}
+      <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+        <p className="text-sm text-yellow-800">
+          <strong>Debug:</strong> Event: {event.name} | Trainers: {assignedTrainers.length} | Check console for logs
+        </p>
+      </div>
+
       {/* Header Section */}
       <div className="bg-white rounded-lg shadow-lg overflow-hidden">
         <div
@@ -167,7 +218,7 @@ function EventDetailPage() {
                 </svg>
                 <div>
                   <p className="text-sm font-semibold text-gray-600">Assigned Trainers</p>
-                  <p className="text-base text-gray-900">
+                  <p className="text-base text-gray-900 font-bold text-lg">
                     {assignedTrainers.length} {assignedTrainers.length === 1 ? 'trainer' : 'trainers'}
                   </p>
                 </div>
@@ -219,7 +270,7 @@ function EventDetailPage() {
 
                     {/* Trainer Info */}
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-gray-900 truncate">
+                      <h3 className="font-semibold text-gray-900 truncate" title={trainer.name}>
                         {trainer.name}
                       </h3>
                       <p className="text-sm text-gray-600 truncate">
@@ -232,8 +283,8 @@ function EventDetailPage() {
                       )}
                       {trainer.status && (
                         <span className={`inline-block mt-2 px-2 py-0.5 rounded text-xs font-semibold ${trainer.status === 'active'
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-gray-100 text-gray-800'
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-gray-100 text-gray-800'
                           }`}>
                           {trainer.status}
                         </span>
