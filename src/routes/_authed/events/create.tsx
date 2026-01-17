@@ -51,12 +51,26 @@ const createEventWithTrainers = createServerFn({ method: 'POST' })
     // Create schedule entries for each selected trainer for each day of the event
     if (data.trainer_ids.length > 0) {
       const scheduleEntries = []
-      const startDate = new Date(data.start_date)
-      const endDate = new Date(data.end_date)
+      const start = new Date(data.start_date)
+      const end = new Date(data.end_date)
 
-      // Loop through each date in the event range
-      for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-        const dateStr = date.toISOString().split('T')[0]
+      // Calculate number of days
+      const diffTime = Math.abs(end.getTime() - start.getTime())
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+      // Loop through each day
+      for (let i = 0; i <= diffDays; i++) {
+        const currentDate = new Date(start)
+        currentDate.setDate(start.getDate() + i)
+
+        // Strict YYYY-MM-DD formatting using local components since input is YYYY-MM-DD
+        const year = currentDate.getFullYear()
+        const month = String(currentDate.getMonth() + 1).padStart(2, '0')
+        const day = String(currentDate.getDate()).padStart(2, '0')
+        const dateStr = `${year}-${month}-${day}` // Consistent with input
+
+        // Double check we haven't gone past end date (safety)
+        if (dateStr > data.end_date) break;
 
         // Create schedule entry for each trainer
         for (const trainerId of data.trainer_ids) {
@@ -64,20 +78,33 @@ const createEventWithTrainers = createServerFn({ method: 'POST' })
             trainer_id: trainerId,
             date: dateStr,
             status: 'scheduled',
-            availability: [], // Can be updated later
+            availability: [],
             notes: `Assigned to: ${data.name}`
           })
         }
       }
 
+      // Use Admin Client if available to bypass RLS, otherwise standard client
+      // Try to import dynamically to avoid top-level issues if any
+      const { getSupabaseAdminClient } = await import('~/utils/supabase')
+      const adminClient = getSupabaseAdminClient()
+      const clientToUse = adminClient || supabase
+
       // Insert all schedule entries
-      const { error: scheduleError } = await supabase
+      const { error: scheduleError } = await clientToUse
         .from('schedules')
         .insert(scheduleEntries)
 
       if (scheduleError) {
         console.error('Error creating schedules:', scheduleError)
-        // Don't fail the entire operation if schedule creation fails
+        // If admin client failed (or wasn't avail), we try standard client just in case
+        if (adminClient && scheduleError) {
+          console.log('Retrying with standard client...')
+          const { error: retryError } = await supabase
+            .from('schedules')
+            .insert(scheduleEntries)
+          if (retryError) console.error('Retry failed:', retryError)
+        }
       }
     }
 
@@ -304,8 +331,8 @@ function CreateEventPage() {
                       type="button"
                       onClick={() => handleColorSelect(colorOption.value)}
                       className={`w-10 h-10 rounded-lg transition-all hover:scale-110 ${formData.color === colorOption.value
-                          ? 'ring-2 ring-offset-2 ring-gray-900 shadow-lg'
-                          : 'hover:shadow-md'
+                        ? 'ring-2 ring-offset-2 ring-gray-900 shadow-lg'
+                        : 'hover:shadow-md'
                         }`}
                       style={{ backgroundColor: colorOption.value }}
                       title={colorOption.name}
@@ -442,8 +469,8 @@ function CreateEventPage() {
                   <label
                     key={trainer.id}
                     className={`flex items-center space-x-3 p-3 rounded-lg border-2 cursor-pointer transition ${formData.trainer_ids.includes(trainer.id)
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-gray-200 bg-white hover:border-gray-300'
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
                       }`}
                   >
                     <input

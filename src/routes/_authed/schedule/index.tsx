@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { getSupabaseServerClient } from '~/utils/supabase'
 import { useState } from 'react'
@@ -6,11 +6,11 @@ import { useState } from 'react'
 // Server function to fetch schedule data
 const getScheduleData = createServerFn({ method: 'GET' }).handler(async () => {
   const supabase = getSupabaseServerClient()
-  
+
   const currentDate = new Date()
   const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
   const lastDay = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0)
-  
+
   const firstDayStr = firstDay.toISOString().split('T')[0]
   const lastDayStr = lastDay.toISOString().split('T')[0]
 
@@ -41,15 +41,15 @@ const getScheduleData = createServerFn({ method: 'GET' }).handler(async () => {
 
   // Get quick stats
   const todayStr = currentDate.toISOString().split('T')[0]
-  
+
   // Count today's schedules with status not 'cancelled'
-  const todaySchedules = schedules?.filter(s => 
+  const todaySchedules = schedules?.filter(s =>
     s.date === todayStr && s.status !== 'cancelled'
   ) || []
 
   // Count this week's schedules
   const weekSchedules = schedules?.filter(s => s.status !== 'cancelled') || []
-  
+
   return {
     events: events || [],
     trainers: trainers || [],
@@ -82,22 +82,22 @@ function SchedulePage() {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatCard 
-          title="Active Trainers" 
-          value={stats.activeTrainers} 
-          icon="👥" 
+        <StatCard
+          title="Active Trainers"
+          value={stats.activeTrainers}
+          icon="👥"
           color="bg-blue-500"
         />
-        <StatCard 
-          title="Today's Sessions" 
-          value={stats.todaySessions} 
-          icon="📅" 
+        <StatCard
+          title="Today's Sessions"
+          value={stats.todaySessions}
+          icon="📅"
           color="bg-green-500"
         />
-        <StatCard 
-          title="This Week" 
-          value={stats.thisWeekSessions} 
-          icon="📊" 
+        <StatCard
+          title="This Week"
+          value={stats.thisWeekSessions}
+          icon="📊"
           color="bg-purple-500"
         />
       </div>
@@ -134,25 +134,22 @@ function SchedulePage() {
           <div className="flex space-x-2">
             <button
               onClick={() => setView('week')}
-              className={`px-4 py-2 rounded ${
-                view === 'week' ? 'bg-blue-600 text-white' : 'bg-gray-200'
-              }`}
+              className={`px-4 py-2 rounded ${view === 'week' ? 'bg-blue-600 text-white' : 'bg-gray-200'
+                }`}
             >
               Week
             </button>
             <button
               onClick={() => setView('month')}
-              className={`px-4 py-2 rounded ${
-                view === 'month' ? 'bg-blue-600 text-white' : 'bg-gray-200'
-              }`}
+              className={`px-4 py-2 rounded ${view === 'month' ? 'bg-blue-600 text-white' : 'bg-gray-200'
+                }`}
             >
               Month
             </button>
             <button
               onClick={() => setView('trainer-schedule')}
-              className={`px-4 py-2 rounded ${
-                view === 'trainer-schedule' ? 'bg-blue-600 text-white' : 'bg-gray-200'
-              }`}
+              className={`px-4 py-2 rounded ${view === 'trainer-schedule' ? 'bg-blue-600 text-white' : 'bg-gray-200'
+                }`}
             >
               Trainer Schedule
             </button>
@@ -167,11 +164,11 @@ function SchedulePage() {
         ) : view === 'month' ? (
           <MonthlyCalendar schedules={schedules} events={events} currentDate={currentDate} />
         ) : (
-          <TrainerScheduleGrid 
-            trainers={trainers} 
+          <TrainerScheduleGrid
+            trainers={trainers}
             schedules={schedules}
             events={events}
-            currentDate={currentDate} 
+            currentDate={currentDate}
           />
         )}
       </div>
@@ -203,10 +200,10 @@ function SchedulePage() {
 }
 
 // Stat Card Component
-function StatCard({ title, value, icon, color }: { 
-  title: string; 
-  value: number; 
-  icon: string; 
+function StatCard({ title, value, icon, color }: {
+  title: string;
+  value: number;
+  icon: string;
   color: string;
 }) {
   return (
@@ -225,13 +222,13 @@ function StatCard({ title, value, icon, color }: {
 }
 
 // Trainer Schedule Grid Component
-function TrainerScheduleGrid({ 
-  trainers, 
+function TrainerScheduleGrid({
+  trainers,
   schedules,
   events,
-  currentDate 
-}: { 
-  trainers: any[]; 
+  currentDate
+}: {
+  trainers: any[];
   schedules: any[];
   events: any[];
   currentDate: Date;
@@ -239,7 +236,7 @@ function TrainerScheduleGrid({
   const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
   const lastDay = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0)
   const daysInMonth = lastDay.getDate()
-  
+
   // Generate all dates in the month
   const dates = Array.from({ length: daysInMonth }, (_, i) => {
     const date = new Date(firstDay)
@@ -247,12 +244,20 @@ function TrainerScheduleGrid({
     return date
   })
 
+  // Helper function to format date as YYYY-MM-DD using local time
+  const formatDateStr = (date: Date) => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
   // Helper function to check if an event occurs on a specific date
   const isEventOnDate = (event: any, date: Date) => {
-    const dateStr = date.toISOString().split('T')[0]
+    const dateStr = formatDateStr(date)
     const startDate = event.start_date
     const endDate = event.end_date
-    
+
     return dateStr >= startDate && dateStr <= endDate
   }
 
@@ -263,7 +268,7 @@ function TrainerScheduleGrid({
 
   // Helper function to get schedule for a trainer on a specific date
   const getScheduleForTrainerDate = (trainerId: number, date: Date) => {
-    const dateStr = date.toISOString().split('T')[0]
+    const dateStr = formatDateStr(date)
     return schedules.find(s => s.trainer_id === trainerId && s.date === dateStr)
   }
 
@@ -309,15 +314,19 @@ function TrainerScheduleGrid({
             </div>
             {/* Date headers */}
             {dates.map((date, idx) => {
-              const isToday = date.toDateString() === new Date().toDateString()
+              const dateStr = formatDateStr(date)
+              // Compare with local Today
+              const today = new Date()
+              const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+              const isToday = dateStr === todayStr
+
               const dayEvents = getEventsForDate(date)
-              
+
               return (
-                <div 
-                  key={idx} 
-                  className={`min-w-[100px] p-2 text-center border-r ${
-                    isToday ? 'bg-blue-50' : ''
-                  }`}
+                <div
+                  key={idx}
+                  className={`min-w-[100px] p-2 text-center border-r ${isToday ? 'bg-blue-50' : ''
+                    }`}
                 >
                   <div className="font-semibold text-xs">
                     {date.toLocaleDateString('en-US', { weekday: 'short' })}
@@ -329,7 +338,7 @@ function TrainerScheduleGrid({
                   {dayEvents.length > 0 && (
                     <div className="mt-1">
                       {dayEvents.map(event => (
-                        <div 
+                        <div
                           key={event.id}
                           className="w-2 h-2 rounded-full mx-auto"
                           style={{ backgroundColor: event.color || '#3b82f6' }}
@@ -348,7 +357,7 @@ function TrainerScheduleGrid({
         <div>
           {trainers.map((trainer) => {
             const scheduleCount = getTrainerScheduleCount(trainer.id)
-            
+
             return (
               <div key={trainer.id} className="flex border-b hover:bg-gray-50">
                 {/* Trainer info column */}
@@ -368,28 +377,44 @@ function TrainerScheduleGrid({
                     )}
                   </div>
                 </div>
-                
+
                 {/* Schedule cells */}
                 {dates.map((date, idx) => {
                   const schedule = getScheduleForTrainerDate(trainer.id, date)
                   const dayEvents = getEventsForDate(date)
-                  const isToday = date.toDateString() === new Date().toDateString()
-                  
+                  const dateStr = formatDateStr(date)
+                  const today = new Date()
+                  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+                  const isToday = dateStr === todayStr
+
+                  // Filter events to only show assigned ones
+                  // IMPROVED: Check note matching OR if the trainer simply has a 'scheduled' status during an event
+                  const assignedEvents = dayEvents.filter(event => {
+                    const hasNoteMatch = schedule?.notes?.includes(event.name) ||
+                      (schedule?.status === 'scheduled' && schedule?.notes?.includes('Assigned to:'))
+
+                    // Fallback: If trainer is 'scheduled' on this day, and there is an event on this day, 
+                    // AND there's no specfic conflicting note, assume assignment.
+                    // This fixes the "Nothing shown" bug if notes are slightly off.
+                    const isScheduledDuringEvent = schedule?.status === 'scheduled' || schedule?.status === 'in progress'
+
+                    return hasNoteMatch || (isScheduledDuringEvent && dayEvents.length === 1)
+                  })
+
                   return (
-                    <div 
-                      key={idx} 
-                      className={`min-w-[100px] p-2 border-r ${
-                        isToday ? 'bg-blue-50/30' : ''
-                      }`}
+                    <div
+                      key={idx}
+                      className={`min-w-[100px] p-2 border-r ${isToday ? 'bg-blue-50/30' : ''
+                        }`}
                     >
-                      {/* Show events first */}
-                      {dayEvents.length > 0 && (
+                      {/* Show assigned events */}
+                      {assignedEvents.length > 0 && (
                         <div className="space-y-1 mb-2">
-                          {dayEvents.map((event) => (
-                            <div 
+                          {assignedEvents.map((event) => (
+                            <div
                               key={event.id}
                               className="text-xs p-1.5 rounded border-l-4"
-                              style={{ 
+                              style={{
                                 borderLeftColor: event.color || '#3b82f6',
                                 backgroundColor: event.color ? `${event.color}15` : '#eff6ff'
                               }}
@@ -408,8 +433,8 @@ function TrainerScheduleGrid({
                         </div>
                       )}
 
-                      {/* Show trainer schedule/status */}
-                      {schedule ? (
+                      {/* Show schedule details if NOT covered by an event (or show additional info) */}
+                      {schedule && assignedEvents.length === 0 ? (
                         <div className={`text-xs p-2 rounded border ${getStatusColor(schedule.status)}`}>
                           <div className="font-bold text-center mb-1">
                             {schedule.status?.toUpperCase()}
@@ -425,11 +450,11 @@ function TrainerScheduleGrid({
                             </div>
                           )}
                         </div>
-                      ) : (
+                      ) : !schedule ? (
                         <div className="text-center text-gray-300 text-xs py-2">
                           —
                         </div>
-                      )}
+                      ) : null}
                     </div>
                   )
                 })}
@@ -449,10 +474,10 @@ function TrainerScheduleGrid({
               const daySchedules = schedules.filter(
                 s => s.date === dateStr && s.status !== 'cancelled'
               ).length
-              
+
               return (
-                <div 
-                  key={idx} 
+                <div
+                  key={idx}
                   className="min-w-[100px] p-3 text-center border-r font-semibold"
                 >
                   {daySchedules > 0 ? daySchedules : '—'}
@@ -493,13 +518,14 @@ function TrainerScheduleGrid({
 }
 
 // Weekly Calendar View
-function WeeklyCalendar({ schedules, events, currentDate }: { 
-  schedules: any[]; 
+function WeeklyCalendar({ schedules, events, currentDate }: {
+  schedules: any[];
   events: any[];
   currentDate: Date;
 }) {
+  const navigate = useNavigate()
   const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-  
+
   const startOfWeek = new Date(currentDate)
   const day = startOfWeek.getDay()
   const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1)
@@ -524,7 +550,7 @@ function WeeklyCalendar({ schedules, events, currentDate }: {
           const dateStr = date.toISOString().split('T')[0]
           const daySchedules = schedules.filter(s => s.date === dateStr)
           const dayEvents = events.filter(e => isEventOnDate(e, date))
-          
+
           return (
             <div key={day} className="text-center">
               <div className="font-semibold text-gray-700">{day}</div>
@@ -534,13 +560,18 @@ function WeeklyCalendar({ schedules, events, currentDate }: {
               <div className="mt-4 space-y-2">
                 {/* Show Events */}
                 {dayEvents.map(event => (
-                  <div 
+                  <div
                     key={event.id}
-                    className="text-xs p-2 rounded border-l-4"
-                    style={{ 
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      navigate({ to: '/events/$id', params: { id: event.id } })
+                    }}
+                    className="text-xs p-2 rounded border-l-4 cursor-pointer hover:opacity-80 transition-opacity"
+                    style={{
                       borderLeftColor: event.color || '#3b82f6',
                       backgroundColor: event.color ? `${event.color}15` : '#eff6ff'
                     }}
+                    title={event.name}
                   >
                     <div className="font-semibold">{event.name}</div>
                     {event.category && (
@@ -548,11 +579,11 @@ function WeeklyCalendar({ schedules, events, currentDate }: {
                     )}
                   </div>
                 ))}
-                
+
                 {/* Show Trainer Schedules */}
                 {daySchedules.map(schedule => (
-                  <div 
-                    key={schedule.id} 
+                  <div
+                    key={schedule.id}
                     className="bg-green-100 text-green-800 text-xs p-2 rounded"
                   >
                     <div className="font-semibold">{schedule.trainer?.name}</div>
@@ -572,11 +603,12 @@ function WeeklyCalendar({ schedules, events, currentDate }: {
 }
 
 // Monthly Calendar View
-function MonthlyCalendar({ schedules, events, currentDate }: { 
-  schedules: any[]; 
+function MonthlyCalendar({ schedules, events, currentDate }: {
+  schedules: any[];
   events: any[];
   currentDate: Date;
 }) {
+  const navigate = useNavigate()
   const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
   const lastDay = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0)
   const startDay = firstDay.getDay()
@@ -618,37 +650,41 @@ function MonthlyCalendar({ schedules, events, currentDate }: {
           const dayEvents = events.filter(e => isEventOnDate(e, dateStr))
 
           return (
-            <div 
-              key={day} 
-              className="aspect-square border rounded-lg p-2 hover:shadow-md transition cursor-pointer"
+            <div
+              key={day}
+              className="aspect-square border rounded-lg p-2 hover:shadow-md transition"
             >
               <div className="font-semibold text-gray-900">{day}</div>
               <div className="mt-1 space-y-1">
-                {dayEvents.slice(0, 1).map(event => (
-                  <div 
+                {dayEvents.slice(0, 2).map(event => (
+                  <div
                     key={event.id}
-                    className="text-xs p-1 rounded border-l-2"
-                    style={{ 
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      navigate({ to: '/events/$id', params: { id: event.id } })
+                    }}
+                    className="text-xs p-1 rounded border-l-2 cursor-pointer hover:opacity-80 transition-opacity"
+                    style={{
                       borderLeftColor: event.color || '#3b82f6',
                       backgroundColor: event.color ? `${event.color}20` : '#eff6ff'
                     }}
                     title={event.name}
                   >
-                    {event.name.substring(0, 8)}
+                    {event.name.substring(0, 8)}..
                   </div>
                 ))}
-                {daySchedules.slice(0, 1).map(schedule => (
-                  <div 
+                {daySchedules.slice(0, 2).map(schedule => (
+                  <div
                     key={schedule.id}
                     className="bg-green-100 text-green-800 text-xs p-1 rounded truncate"
                     title={`${schedule.trainer?.name} - ${schedule.status}`}
                   >
-                    {schedule.trainer?.name?.substring(0, 8)}
+                    {schedule.trainer?.name?.substring(0, 8)}..
                   </div>
                 ))}
-                {(dayEvents.length + daySchedules.length) > 2 && (
+                {(dayEvents.length + daySchedules.length) > 4 && (
                   <div className="text-xs text-gray-600">
-                    +{dayEvents.length + daySchedules.length - 2} more
+                    +{dayEvents.length + daySchedules.length - 4} more
                   </div>
                 )}
               </div>

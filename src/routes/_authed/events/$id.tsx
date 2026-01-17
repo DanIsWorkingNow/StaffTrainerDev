@@ -6,7 +6,7 @@ const getEventWithTrainers = createServerFn({ method: 'GET' })
   .inputValidator((id: string) => id)
   .handler(async ({ data: id }) => {
     const supabase = getSupabaseServerClient()
-    
+
     // Get the event details
     const { data: event } = await supabase
       .from('events')
@@ -15,11 +15,12 @@ const getEventWithTrainers = createServerFn({ method: 'GET' })
       .single()
 
     // Get all trainers assigned to this event through schedules
-    // Get distinct trainers by looking at schedule entries that match the event date range
     const { data: schedules } = await supabase
       .from('schedules')
       .select(`
         trainer_id,
+        notes,
+        status,
         trainers (
           id,
           name,
@@ -30,13 +31,24 @@ const getEventWithTrainers = createServerFn({ method: 'GET' })
       `)
       .gte('date', event.start_date)
       .lte('date', event.end_date)
-      .eq('status', 'scheduled')
 
     // Extract unique trainers
     const uniqueTrainerIds = new Set()
     const assignedTrainers = schedules
       ?.filter((schedule: any) => {
-        if (!uniqueTrainerIds.has(schedule.trainer_id)) {
+        // Robust check: matches event name in notes OR is 'scheduled' during this time
+        const matchesEvent = schedule.notes?.includes(event.name) ||
+          schedule.notes?.includes('Assigned to:') ||
+          false
+
+        // Accept matching note OR explicit 'scheduled' or 'in progress' status
+        // Since we already filtered schedules by date range, any scheduled block is likely an assignment
+        // especially if no conflicting notes exist.
+        const isValidAssignment = matchesEvent ||
+          schedule.status === 'scheduled' ||
+          schedule.status === 'in progress'
+
+        if (isValidAssignment && !uniqueTrainerIds.has(schedule.trainer_id)) {
           uniqueTrainerIds.add(schedule.trainer_id)
           return true
         }
@@ -55,7 +67,7 @@ export const Route = createFileRoute('/_authed/events/$id')({
 
 function EventDetailPage() {
   const { event, assignedTrainers } = Route.useLoaderData()
-  
+
   // Calculate event duration
   const startDate = new Date(event.start_date)
   const endDate = new Date(event.end_date)
@@ -76,7 +88,7 @@ function EventDetailPage() {
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Header Section */}
       <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-        <div 
+        <div
           className="h-3"
           style={{ backgroundColor: event.color }}
         />
@@ -85,7 +97,7 @@ function EventDetailPage() {
             <div className="flex-1">
               <h1 className="text-3xl font-bold text-gray-900 mb-2">{event.name}</h1>
               <div className="flex items-center space-x-2">
-                <span 
+                <span
                   className="inline-block px-3 py-1 rounded-full text-sm font-semibold text-white"
                   style={{ backgroundColor: event.color }}
                 >
@@ -93,7 +105,7 @@ function EventDetailPage() {
                 </span>
               </div>
             </div>
-            
+
             {/* Event Status Badge */}
             <div>
               {new Date(event.end_date) < new Date() ? (
@@ -219,11 +231,10 @@ function EventDetailPage() {
                         </p>
                       )}
                       {trainer.status && (
-                        <span className={`inline-block mt-2 px-2 py-0.5 rounded text-xs font-semibold ${
-                          trainer.status === 'active' 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
+                        <span className={`inline-block mt-2 px-2 py-0.5 rounded text-xs font-semibold ${trainer.status === 'active'
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-gray-100 text-gray-800'
+                          }`}>
                           {trainer.status}
                         </span>
                       )}
@@ -253,8 +264,8 @@ function EventDetailPage() {
           <div>
             <h3 className="font-semibold text-gray-900 mb-1">Schedule Information</h3>
             <p className="text-sm text-gray-700">
-              All assigned trainers are scheduled for the entire event duration 
-              ({duration} {duration === 1 ? 'day' : 'days'}). Each trainer has individual schedule 
+              All assigned trainers are scheduled for the entire event duration
+              ({duration} {duration === 1 ? 'day' : 'days'}). Each trainer has individual schedule
               entries created for every day of the event period.
             </p>
           </div>
