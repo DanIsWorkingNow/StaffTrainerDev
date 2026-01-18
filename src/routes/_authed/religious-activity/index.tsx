@@ -234,11 +234,19 @@ function ReligiousActivityPage() {
       {/* Calendar Controls */}
       <div className="bg-white rounded-lg shadow p-4">
         <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-          <div className="flex items-center space-x-4">
+          {/* Navigation - Smart Month/Week Navigation */}
+          <div className="flex items-center justify-between mb-6">
             <button
               onClick={() => {
                 const newDate = new Date(currentDate)
-                newDate.setMonth(currentDate.getMonth() - 1)
+                // ✅ FIXED: Check view type
+                if (view === 'week' || view === 'participant-schedule') {
+                  // Move backward by 7 days (1 week)
+                  newDate.setDate(currentDate.getDate() - 7)
+                } else {
+                  // Move backward by 1 month
+                  newDate.setMonth(currentDate.getMonth() - 1)
+                }
                 setCurrentDate(newDate)
               }}
               className="p-2 hover:bg-gray-100 rounded-lg transition"
@@ -246,14 +254,31 @@ function ReligiousActivityPage() {
               ◀ Previous
             </button>
 
-            <h2 className="text-2xl font-bold">
-              {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+            <h2 className="text-2xl font-bold text-gray-900">
+              {view === 'week' || view === 'participant-schedule'
+                ? `Week of ${currentDate.toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric'
+                })}`
+                : currentDate.toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'long'
+                })
+              }
             </h2>
 
             <button
               onClick={() => {
                 const newDate = new Date(currentDate)
-                newDate.setMonth(currentDate.getMonth() + 1)
+                // ✅ FIXED: Check view type
+                if (view === 'week' || view === 'participant-schedule') {
+                  // Move forward by 7 days (1 week)
+                  newDate.setDate(currentDate.getDate() + 7)
+                } else {
+                  // Move forward by 1 month
+                  newDate.setMonth(currentDate.getMonth() + 1)
+                }
                 setCurrentDate(newDate)
               }}
               className="p-2 hover:bg-gray-100 rounded-lg transition"
