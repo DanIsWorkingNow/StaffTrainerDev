@@ -386,7 +386,7 @@ function EditSessionPage() {
       </form>
 
       {/* Debug Info (Development Only) */}
-      {process.env.NODE_ENV === 'development' && (
+      {/*{process.env.NODE_ENV === 'development' && (
         <div className="bg-gray-100 border border-gray-300 rounded-lg p-4 text-xs">
           <p className="font-semibold text-gray-700 mb-2">Debug Information:</p>
           <pre className="text-gray-600 overflow-x-auto">
@@ -397,7 +397,7 @@ function EditSessionPage() {
             }, null, 2)}
           </pre>
         </div>
-      )}
+      )}*/}
     </div>
   )
 }

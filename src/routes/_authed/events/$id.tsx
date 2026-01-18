@@ -130,12 +130,6 @@ function EventDetailPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      {/* Debug Info - Remove after testing */}
-      <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-        <p className="text-sm text-yellow-800">
-          <strong>Debug:</strong> Event: {event.name} | Trainers: {assignedTrainers.length} | Check console for logs
-        </p>
-      </div>
 
       {/* Header Section */}
       <div className="bg-white rounded-lg shadow-lg overflow-hidden">
@@ -283,8 +277,8 @@ function EventDetailPage() {
                       )}
                       {trainer.status && (
                         <span className={`inline-block mt-2 px-2 py-0.5 rounded text-xs font-semibold ${trainer.status === 'active'
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-gray-100 text-gray-800'
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-gray-100 text-gray-800'
                           }`}>
                           {trainer.status}
                         </span>
