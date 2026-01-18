@@ -5,9 +5,9 @@ import { getSupabaseServerClient } from '~/utils/supabase'
 // Server function to fetch dashboard data
 const getDashboardData = createServerFn({ method: 'GET' }).handler(async () => {
   const supabase = getSupabaseServerClient()
-  
+
   const today = new Date().toISOString().split('T')[0]
-  
+
   // Fetch all necessary data
   const { data: trainers } = await supabase
     .from('trainers')
@@ -62,83 +62,137 @@ const getDashboardData = createServerFn({ method: 'GET' }).handler(async () => {
   }
 })
 
-export const Route = createFileRoute('/_authed/')({  // Changed from '/' to '/_authed/'
+export const Route = createFileRoute('/_authed/')({
   loader: async () => await getDashboardData(),
   component: DashboardPage,
 })
+
+// ===== HELPER FUNCTIONS FOR RBAC =====
+
+/**
+ * Check if user has management access (ADMIN or COORDINATOR)
+ * @param role - User's role from context
+ * @returns boolean - true if user can access management features
+ */
+function canAccessManagement(role?: string): boolean {
+  return role === 'ADMIN' || role === 'COORDINATOR'
+}
+
+/**
+ * Get appropriate grid classes based on number of visible stat cards
+ * @param role - User's role from context
+ * @returns string - Tailwind grid classes
+ */
+function getStatCardGridClass(role?: string): string {
+  // TRAINER sees 4 cards, ADMIN/COORDINATOR see 6 cards
+  const isManagement = canAccessManagement(role)
+  return isManagement
+    ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4"
+    : "grid grid-cols-2 md:grid-cols-4 gap-4"
+}
+
+/**
+ * Get appropriate grid classes for quick actions based on visible buttons
+ * @param role - User's role from context
+ * @returns string - Tailwind grid classes
+ */
+function getQuickActionGridClass(role?: string): string {
+  // TRAINER sees 1 button, ADMIN/COORDINATOR see 4 buttons
+  const isManagement = canAccessManagement(role)
+  return isManagement
+    ? "grid grid-cols-2 md:grid-cols-4 gap-4"
+    : "grid grid-cols-1 md:grid-cols-2 gap-4"
+}
+
+// ===== MAIN COMPONENT =====
 
 function DashboardPage() {
   const { stats, upcomingEvents, todayActivities } = Route.useLoaderData()
   const { user } = Route.useRouteContext()
 
+  // Check if user has management access
+  const isManagement = canAccessManagement(user?.role)
+
   return (
     <div className="space-y-6">
       {/* Welcome Banner */}
-      <div className="bg-gradient-to-r from-orange-600 to-red-700 rounded lg shadow-lg p-8 text-white">
-        
+      <div className="bg-gradient-to-r from-orange-600 to-red-700 rounded-lg shadow-lg p-8 text-white">
         <div className="flex items-center space-x-4">
           <div className="text-6xl">🔥</div>
           <div>
             <h1 className="text-4xl font-bold mb-2">ABPM Trainer System</h1>
             <p className="text-blue-100 text-lg">
-              Welcome back, {user?.email}! 
+              Welcome back, {user?.email}!
             </p>
             <p className="text-blue-200 text-sm mt-1">
-              {new Date().toLocaleDateString('en-US', { 
-                weekday: 'long', 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
+              {new Date().toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
               })}
             </p>
+            {/* Debug: Show user role (remove in production) */}
+            {process.env.NODE_ENV === 'development' && (
+              <p className="text-yellow-300 text-xs mt-2">
+                Role: {user?.role || 'Not set'} | Access: {isManagement ? 'Management' : 'Trainer'}
+              </p>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <StatCard 
-          title="Active Trainers" 
-          value={stats.activeTrainers} 
-          icon="👥" 
-          color="bg-blue-500"
-          link="/schedule"
-        />
-        <StatCard 
-          title="Today's Sessions" 
-          value={stats.todaySessions} 
-          icon="📅" 
+      {/* Quick Stats - Role-based rendering */}
+      <div className={getStatCardGridClass(user?.role)}>
+        {/* Always visible to all roles */}
+        <StatCard
+          title="Today's Sessions"
+          value={stats.todaySessions}
+          icon="📅"
           color="bg-green-500"
           link="/schedule"
         />
-        <StatCard 
-          title="Upcoming Events" 
-          value={stats.upcomingEvents} 
-          icon="📋" 
+        <StatCard
+          title="Upcoming Events"
+          value={stats.upcomingEvents}
+          icon="📋"
           color="bg-purple-500"
           link="/events"
         />
-        <StatCard 
-          title="PT Today" 
-          value={stats.physicalTraining} 
-          icon="💪" 
+        <StatCard
+          title="PT Today"
+          value={stats.physicalTraining}
+          icon="💪"
           color="bg-orange-500"
           link="/physical-training"
         />
-        <StatCard 
-          title="Religious" 
-          value={stats.religiousActivities} 
-          icon="📖" 
+        <StatCard
+          title="Religious"
+          value={stats.religiousActivities}
+          icon="📖"
           color="bg-teal-500"
           link="/religious-activity"
         />
-        <StatCard 
-          title="Occupancy" 
-          value={`${stats.occupancyRate}%`} 
-          icon="🏢" 
-          color="bg-indigo-500"
-          link="/dormitory"
-        />
+
+        {/* Only visible to ADMIN and COORDINATOR */}
+        {isManagement && (
+          <>
+            <StatCard
+              title="Active Trainers"
+              value={stats.activeTrainers}
+              icon="👥"
+              color="bg-blue-500"
+              link="/schedule"
+            />
+            <StatCard
+              title="Occupancy"
+              value={`${stats.occupancyRate}%`}
+              icon="🏢"
+              color="bg-indigo-500"
+              link="/dormitory"
+            />
+          </>
+        )}
       </div>
 
       {/* Today's Activities */}
@@ -166,8 +220,8 @@ function DashboardPage() {
                 ))}
               </div>
             )}
-            <Link 
-              to="/religious-activity" 
+            <Link
+              to="/religious-activity"
               className="block mt-4 text-center text-teal-600 hover:text-teal-700 font-semibold"
             >
               View All →
@@ -201,8 +255,8 @@ function DashboardPage() {
                 ))}
               </div>
             )}
-            <Link 
-              to="/physical-training" 
+            <Link
+              to="/physical-training"
               className="block mt-4 text-center text-orange-600 hover:text-orange-700 font-semibold"
             >
               View All →
@@ -241,13 +295,13 @@ function DashboardPage() {
                         <p className="font-semibold text-gray-900">{event.name}</p>
                         <p className="text-sm text-gray-600 mt-1">{event.category}</p>
                         <p className="text-sm text-gray-600 mt-1">
-                          📅 {startDate.toLocaleDateString('en-US', { 
-                            month: 'short', 
-                            day: 'numeric' 
+                          📅 {startDate.toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric'
                           })}
-                          {duration > 1 && ` - ${endDate.toLocaleDateString('en-US', { 
-                            month: 'short', 
-                            day: 'numeric' 
+                          {duration > 1 && ` - ${endDate.toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric'
                           })}`}
                         </p>
                       </div>
@@ -258,8 +312,8 @@ function DashboardPage() {
               })}
             </div>
           )}
-          <Link 
-            to="/events" 
+          <Link
+            to="/events"
             className="block mt-4 text-center text-purple-600 hover:text-purple-700 font-semibold"
           >
             View All Events →
@@ -267,48 +321,57 @@ function DashboardPage() {
         </div>
       </div>
 
-      {/* Quick Actions */}
+      {/* Quick Actions - Role-based rendering */}
       <div className="bg-white rounded-lg shadow p-6">
         <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <QuickActionButton 
-            to="/schedule" 
-            icon="📅" 
+        <div className={getQuickActionGridClass(user?.role)}>
+          {/* Always visible to all roles */}
+          <QuickActionButton
+            to="/schedule"
+            icon="📅"
             label="View Schedule"
             color="bg-blue-500"
           />
-          <QuickActionButton 
-            to="/events/create" 
-            icon="➕" 
-            label="Create Event"
-            color="bg-purple-500"
-          />
-          <QuickActionButton 
-            to="/trainer-overview" 
-            icon="👥" 
-            label="Trainer Stats"
-            color="bg-green-500"
-          />
-          <QuickActionButton 
-            to="/dormitory" 
-            icon="🏢" 
-            label="Dormitory"
-            color="bg-indigo-500"
-          />
+
+          {/* Only visible to ADMIN and COORDINATOR */}
+          {isManagement && (
+            <>
+              <QuickActionButton
+                to="/events/create"
+                icon="➕"
+                label="Create Event"
+                color="bg-purple-500"
+              />
+              <QuickActionButton
+                to="/trainer-overview"
+                icon="👥"
+                label="Trainer Stats"
+                color="bg-green-500"
+              />
+              <QuickActionButton
+                to="/dormitory"
+                icon="🏢"
+                label="Dormitory"
+                color="bg-indigo-500"
+              />
+            </>
+          )}
         </div>
       </div>
     </div>
   )
 }
 
+// ===== SUB-COMPONENTS =====
+
 // Stat Card Component
-function StatCard({ 
-  title, 
-  value, 
-  icon, 
+function StatCard({
+  title,
+  value,
+  icon,
   color,
-  link 
-}: { 
+  link
+}: {
   title: string
   value: string | number
   icon: string
@@ -329,12 +392,12 @@ function StatCard({
 }
 
 // Quick Action Button Component
-function QuickActionButton({ 
-  to, 
-  icon, 
+function QuickActionButton({
+  to,
+  icon,
   label,
-  color 
-}: { 
+  color
+}: {
   to: string
   icon: string
   label: string
