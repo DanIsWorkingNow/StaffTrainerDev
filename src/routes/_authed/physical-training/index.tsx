@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { getSupabaseServerClient } from '~/utils/supabase'
 import { getCurrentUserRole } from '~/middleware/rbac'
@@ -341,7 +341,12 @@ function PhysicalTrainingPage() {
           return (
             <div className="space-y-3">
               {displayTrainings.map((training: any) => (
-                <div key={training.id} className="border-l-4 border-orange-500 bg-orange-50 p-4 rounded hover:shadow-md transition">
+                <Link
+                  key={training.id}
+                  to="/physical-training/$id"
+                  params={{ id: training.id.toString() }}
+                  className="block border-l-4 border-orange-500 bg-orange-50 p-4 rounded hover:shadow-lg hover:bg-orange-100 transition-all cursor-pointer"
+                >
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
                       <h4 className="font-semibold text-gray-900">{training.training_type}</h4>
@@ -368,7 +373,7 @@ function PhysicalTrainingPage() {
                       💪 Physical
                     </div>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           )
