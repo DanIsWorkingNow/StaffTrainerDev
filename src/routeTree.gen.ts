@@ -28,6 +28,7 @@ import { Route as AuthedReligiousActivityIdRouteImport } from './routes/_authed/
 import { Route as AuthedPostsPostIdRouteImport } from './routes/_authed/posts.$postId'
 import { Route as AuthedEventsCreateRouteImport } from './routes/_authed/events/create'
 import { Route as AuthedEventsIdRouteImport } from './routes/_authed/events/$id'
+import { Route as AuthedReligiousActivityEditIdRouteImport } from './routes/_authed/religious-activity/edit.$id'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -127,6 +128,12 @@ const AuthedEventsIdRoute = AuthedEventsIdRouteImport.update({
   path: '/events/$id',
   getParentRoute: () => AuthedRoute,
 } as any)
+const AuthedReligiousActivityEditIdRoute =
+  AuthedReligiousActivityEditIdRouteImport.update({
+    id: '/religious-activity/edit/$id',
+    path: '/religious-activity/edit/$id',
+    getParentRoute: () => AuthedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
@@ -147,6 +154,7 @@ export interface FileRoutesByFullPath {
   '/religious-activity': typeof AuthedReligiousActivityIndexRoute
   '/schedule': typeof AuthedScheduleIndexRoute
   '/trainer-overview': typeof AuthedTrainerOverviewIndexRoute
+  '/religious-activity/edit/$id': typeof AuthedReligiousActivityEditIdRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -166,6 +174,7 @@ export interface FileRoutesByTo {
   '/religious-activity': typeof AuthedReligiousActivityIndexRoute
   '/schedule': typeof AuthedScheduleIndexRoute
   '/trainer-overview': typeof AuthedTrainerOverviewIndexRoute
+  '/religious-activity/edit/$id': typeof AuthedReligiousActivityEditIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -188,6 +197,7 @@ export interface FileRoutesById {
   '/_authed/religious-activity/': typeof AuthedReligiousActivityIndexRoute
   '/_authed/schedule/': typeof AuthedScheduleIndexRoute
   '/_authed/trainer-overview/': typeof AuthedTrainerOverviewIndexRoute
+  '/_authed/religious-activity/edit/$id': typeof AuthedReligiousActivityEditIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -210,6 +220,7 @@ export interface FileRouteTypes {
     | '/religious-activity'
     | '/schedule'
     | '/trainer-overview'
+    | '/religious-activity/edit/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -229,6 +240,7 @@ export interface FileRouteTypes {
     | '/religious-activity'
     | '/schedule'
     | '/trainer-overview'
+    | '/religious-activity/edit/$id'
   id:
     | '__root__'
     | '/_authed'
@@ -250,6 +262,7 @@ export interface FileRouteTypes {
     | '/_authed/religious-activity/'
     | '/_authed/schedule/'
     | '/_authed/trainer-overview/'
+    | '/_authed/religious-activity/edit/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -394,6 +407,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedEventsIdRouteImport
       parentRoute: typeof AuthedRoute
     }
+    '/_authed/religious-activity/edit/$id': {
+      id: '/_authed/religious-activity/edit/$id'
+      path: '/religious-activity/edit/$id'
+      fullPath: '/religious-activity/edit/$id'
+      preLoaderRoute: typeof AuthedReligiousActivityEditIdRouteImport
+      parentRoute: typeof AuthedRoute
+    }
   }
 }
 
@@ -425,6 +445,7 @@ interface AuthedRouteChildren {
   AuthedReligiousActivityIndexRoute: typeof AuthedReligiousActivityIndexRoute
   AuthedScheduleIndexRoute: typeof AuthedScheduleIndexRoute
   AuthedTrainerOverviewIndexRoute: typeof AuthedTrainerOverviewIndexRoute
+  AuthedReligiousActivityEditIdRoute: typeof AuthedReligiousActivityEditIdRoute
 }
 
 const AuthedRouteChildren: AuthedRouteChildren = {
@@ -441,6 +462,7 @@ const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedReligiousActivityIndexRoute: AuthedReligiousActivityIndexRoute,
   AuthedScheduleIndexRoute: AuthedScheduleIndexRoute,
   AuthedTrainerOverviewIndexRoute: AuthedTrainerOverviewIndexRoute,
+  AuthedReligiousActivityEditIdRoute: AuthedReligiousActivityEditIdRoute,
 }
 
 const AuthedRouteWithChildren =

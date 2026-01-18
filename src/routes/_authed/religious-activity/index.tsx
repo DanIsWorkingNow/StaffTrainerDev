@@ -1,8 +1,9 @@
-import { createFileRoute } from '@tanstack/react-router'
+
 import { createServerFn } from '@tanstack/react-start'
 import { getSupabaseServerClient } from '~/utils/supabase'
 import { getCurrentUserRole } from '~/middleware/rbac'
 import { useState } from 'react'
+import { createFileRoute, Link } from '@tanstack/react-router'
 
 // Server functions
 const getReligiousActivityData = createServerFn({ method: 'GET' }).handler(async () => {
@@ -335,7 +336,13 @@ function ReligiousActivityPage() {
           return (
             <div className="space-y-3">
               {displayActivities.map((activity: any) => (
-                <div key={activity.id} className="border-l-4 border-teal-500 bg-teal-50 p-4 rounded hover:shadow-md transition">
+                // ✅ CHANGED: <div> to <Link> to make activities clickable
+                <Link
+                  key={activity.id}
+                  to="/religious-activity/$id"
+                  params={{ id: activity.id.toString() }}
+                  className="block border-l-4 border-teal-500 bg-teal-50 p-4 rounded hover:shadow-lg hover:bg-teal-100 transition-all cursor-pointer"
+                >
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
                       <h4 className="font-semibold text-gray-900 text-lg">{activity.activity}</h4>
@@ -360,7 +367,8 @@ function ReligiousActivityPage() {
                       🕌 Religious
                     </div>
                   </div>
-                </div>
+                </Link>
+                // ✅ CHANGED: Closing tag from </div> to </Link>
               ))}
             </div>
           )
