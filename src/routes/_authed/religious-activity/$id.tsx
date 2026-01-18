@@ -194,7 +194,17 @@ function ReligiousActivityDetailPage() {
                 {/* Action Buttons - Only for ADMIN/COORDINATOR */}
                 {canManage && (
                     <div className="flex space-x-3">
-                        {/* Edit button removed until edit page is created */}
+                        {/* Edit Button */}
+                        <Link
+                            to="/religious-activity/edit/$id"
+                            params={{ id: activity.id.toString() }}
+                            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                        >
+                            <span className="text-lg">✏️</span>
+                            <span>Edit</span>
+                        </Link>
+
+                        {/* Delete Button */}
                         <button
                             onClick={handleDelete}
                             disabled={isDeleting}
