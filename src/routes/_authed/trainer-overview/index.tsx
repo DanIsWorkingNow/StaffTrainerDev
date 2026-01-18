@@ -238,15 +238,38 @@ function HourlyTimeline({ activities }: { activities: TimelineActivity[] }) {
   const hours = Array.from({ length: 24 }, (_, i) => i)
 
   // Calculate position and height for each activity
-  const positionedActivities = activities.map(activity => {
+  const positionedActivities = activities.map((activity, index) => {
     const startDecimal = timeToDecimal(activity.startTime)
     const endDecimal = timeToDecimal(activity.endTime)
     const duration = endDecimal - startDecimal
 
     return {
       ...activity,
+      index,
       top: (startDecimal / 24) * 100, // Percentage from top
       height: (duration / 24) * 100,  // Percentage height
+      startDecimal,
+      endDecimal,
+    }
+  })
+
+  // Detect overlaps and assign columns
+  const activitiesWithColumns = positionedActivities.map((activity, i) => {
+    // Find all activities that overlap with this one
+    const overlapping = positionedActivities.filter((other, j) => {
+      if (i === j) return false
+      // Check if time ranges overlap
+      return !(other.endDecimal <= activity.startDecimal || other.startDecimal >= activity.endDecimal)
+    })
+
+    // Calculate column index (how many overlapping activities start before this one)
+    const columnIndex = overlapping.filter(other => other.index < activity.index).length
+    const totalColumns = overlapping.length + 1 // Including this activity
+
+    return {
+      ...activity,
+      columnIndex,
+      totalColumns,
     }
   })
 
@@ -278,39 +301,47 @@ function HourlyTimeline({ activities }: { activities: TimelineActivity[] }) {
 
         {/* Activity blocks */}
         <div className="absolute left-0 right-0 top-0 bottom-0 ml-2">
-          {positionedActivities.map(activity => (
-            <div
-              key={activity.id}
-              className="absolute left-0 right-0 mx-2 rounded-lg p-3 shadow-md border-l-4 cursor-pointer hover:shadow-xl transition-all"
-              style={{
-                top: `${activity.top}%`,
-                height: `${Math.max(activity.height, 4)}%`, // Minimum 4% height
-                backgroundColor: activity.color + '15',
-                borderLeftColor: activity.color,
-              }}
-            >
-              <div className="flex items-start gap-2">
-                <span className="text-xl flex-shrink-0">{activity.icon}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-gray-900 text-sm truncate">
-                    {activity.title}
-                  </div>
-                  <div className="text-xs text-gray-600 mt-1">
-                    {activity.startTime} - {activity.endTime}
-                  </div>
-                  <div
-                    className="text-xs mt-1 px-2 py-0.5 rounded-full inline-block"
-                    style={{
-                      backgroundColor: activity.color,
-                      color: 'white'
-                    }}
-                  >
-                    {activity.role}
+          {activitiesWithColumns.map(activity => {
+            // Calculate horizontal position based on column
+            const widthPercent = (100 / activity.totalColumns)
+            const leftPercent = (activity.columnIndex * widthPercent)
+
+            return (
+              <div
+                key={activity.id}
+                className="absolute rounded-lg p-3 shadow-md border-l-4 cursor-pointer hover:shadow-xl transition-all"
+                style={{
+                  top: `${activity.top}%`,
+                  height: `${Math.max(activity.height, 4)}%`, // Minimum 4% height
+                  left: `${leftPercent + 0.5}%`, // Small margin
+                  width: `${widthPercent - 1}%`, // Small gap between columns
+                  backgroundColor: activity.color + '15',
+                  borderLeftColor: activity.color,
+                }}
+              >
+                <div className="flex items-start gap-2">
+                  <span className="text-xl flex-shrink-0">{activity.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-gray-900 text-sm truncate">
+                      {activity.title}
+                    </div>
+                    <div className="text-xs text-gray-600 mt-1">
+                      {activity.startTime} - {activity.endTime}
+                    </div>
+                    <div
+                      className="text-xs mt-1 px-2 py-0.5 rounded-full inline-block"
+                      style={{
+                        backgroundColor: activity.color,
+                        color: 'white'
+                      }}
+                    >
+                      {activity.role}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
 
           {/* No activities message */}
           {positionedActivities.length === 0 && (
