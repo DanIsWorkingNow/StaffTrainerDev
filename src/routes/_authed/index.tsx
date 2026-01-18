@@ -132,12 +132,6 @@ function DashboardPage() {
                 day: 'numeric'
               })}
             </p>
-            {/* Debug: Show user role (remove in production) */}
-            {process.env.NODE_ENV === 'development' && (
-              <p className="text-yellow-300 text-xs mt-2">
-                Role: {user?.role || 'Not set'} | Access: {isManagement ? 'Management' : 'Trainer'}
-              </p>
-            )}
           </div>
         </div>
       </div>
