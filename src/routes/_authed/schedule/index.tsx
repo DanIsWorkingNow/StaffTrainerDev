@@ -585,41 +585,55 @@ function WeeklyCalendar({ schedules, events, currentDate }: {
                 {date.getDate()}
               </div>
               <div className="mt-4 space-y-2">
-                {/* Show Events */}
-                {dayEvents.map(event => (
-                  <div
-                    key={event.id}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      navigate({ to: '/events/$id', params: { id: event.id } })
-                    }}
-                    className="text-xs p-2 rounded border-l-4 cursor-pointer hover:opacity-80 transition-opacity"
-                    style={{
-                      borderLeftColor: event.color || '#3b82f6',
-                      backgroundColor: event.color ? `${event.color}15` : '#eff6ff'
-                    }}
-                    title={event.name}
-                  >
-                    <div className="font-semibold">{event.name}</div>
-                    {event.category && (
-                      <div className="text-xs text-gray-600">{event.category}</div>
-                    )}
-                  </div>
-                ))}
+                {/* Show Events with Trainer Count */}
+                {dayEvents.map(event => {
+                  // Count trainers assigned to this event
+                  const eventTrainerCount = daySchedules.filter(s =>
+                    s.notes?.includes(event.name)
+                  ).length;
 
-                {/* Show Trainer Schedules */}
-                {daySchedules.map(schedule => (
-                  <div
-                    key={schedule.id}
-                    className="bg-green-100 text-green-800 text-xs p-2 rounded"
-                  >
-                    <div className="font-semibold">{schedule.trainer?.name}</div>
-                    <div className="text-xs">{schedule.status}</div>
-                    {schedule.availability && schedule.availability.length > 0 && (
-                      <div className="text-xs">{schedule.availability.join(', ')}</div>
-                    )}
-                  </div>
-                ))}
+                  return (
+                    <div
+                      key={event.id}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        navigate({ to: '/events/$id', params: { id: event.id } })
+                      }}
+                      className="text-xs p-2 rounded border-l-4 cursor-pointer hover:opacity-80 transition-opacity"
+                      style={{
+                        borderLeftColor: event.color || '#3b82f6',
+                        backgroundColor: event.color ? `${event.color}15` : '#eff6ff'
+                      }}
+                      title={`${event.name} - ${eventTrainerCount} trainer(s)`}
+                    >
+                      <div className="font-semibold truncate">{event.name}</div>
+                      {event.category && (
+                        <div className="text-xs text-gray-500 mt-1">{event.category}</div>
+                      )}
+                      {eventTrainerCount > 0 && (
+                        <div className="flex items-center gap-1 mt-1.5 text-gray-600">
+                          <span>👥</span>
+                          <span className="font-medium">{eventTrainerCount}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Show only standalone trainer schedules (not linked to events) */}
+                {daySchedules
+                  .filter(s => !s.notes || !dayEvents.some(e => s.notes?.includes(e.name)))
+                  .slice(0, 2) // Limit to 2 standalone schedules
+                  .map(schedule => (
+                    <div
+                      key={schedule.id}
+                      className="bg-green-50 border-l-4 border-green-500 text-green-800 text-xs p-2 rounded"
+                    >
+                      <div className="font-semibold truncate">{schedule.trainer?.name}</div>
+                      <div className="text-xs text-gray-600">{schedule.status}</div>
+                    </div>
+                  ))
+                }
               </div>
             </div>
           )
