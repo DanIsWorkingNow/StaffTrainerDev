@@ -151,9 +151,13 @@ function RootDocument({ children }: { children: React.ReactNode }) {
             <div className="flex justify-between items-center h-16">
               {/* Logo and Title */}
               <div className="flex items-center space-x-3">
-                <span className="text-2xl">🔥</span>
-                <div>
-                  <h1 className="text-xl font-bold">ABPM Trainer System</h1>
+                <img
+                  src="/abpm-logo.png"
+                  alt="ABPM Logo"
+                  className="h-10 w-auto"
+                />
+                <div className="flex flex-col">
+                  <h1 className="text-lg font-bold leading-tight">ABPM Trainer System</h1>
                   <p className="text-xs text-orange-100">Akademi Bomba dan Penyelamat Malaysia</p>
                 </div>
               </div>

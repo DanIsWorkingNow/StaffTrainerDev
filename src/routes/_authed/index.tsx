@@ -118,7 +118,11 @@ function DashboardPage() {
       {/* Welcome Banner */}
       <div className="bg-gradient-to-r from-orange-600 to-red-700 rounded-lg shadow-lg p-8 text-white">
         <div className="flex items-center space-x-4">
-          <div className="text-6xl">🔥</div>
+          <img
+            src="/abpm-logo.png"
+            alt="ABPM Logo"
+            className="h-32 w-auto"
+          />
           <div>
             <h1 className="text-4xl font-bold mb-2">ABPM Trainer System</h1>
             <p className="text-blue-100 text-lg">
