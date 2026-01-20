@@ -13,7 +13,7 @@ const getTrainerOverviewData = createServerFn({ method: 'GET' })
     const { data: trainers } = await supabase
       .from('trainers')
       .select('*, roles (id, name, level)')
-      .eq('status', 'active')
+      .eq('is_active', true)  // ✅ CORRECT - Filter by is_active!
       .order('name')
 
     // Get all roles for the dropdown
