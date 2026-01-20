@@ -86,26 +86,62 @@ const getEventWithTrainers = createServerFn({ method: 'GET' })
     return { event, assignedTrainers, error: null }
   })
 
-// 🆕 NEW: Delete event server function
+// ✅ FIXED: Delete event server function with proper error handling
 const deleteEvent = createServerFn({ method: 'POST' })
   .inputValidator((id: string) => id)
   .handler(async ({ data: id }) => {
     const supabase = getSupabaseServerClient()
 
-    // First, delete all schedule entries for this event
-    await supabase
+    console.log('🗑️ Starting delete process for event ID:', id)
+
+    // ✅ FIX 1: First, get the event to know its name
+    const { data: event, error: fetchError } = await supabase
+      .from('events')
+      .select('name')
+      .eq('id', id)
+      .single()
+
+    if (fetchError || !event) {
+      console.error('❌ Failed to fetch event:', fetchError)
+      throw new Error('Event not found')
+    }
+
+    console.log('📅 Found event:', event.name)
+
+    // ✅ FIX 2: Delete schedules using EVENT NAME (not ID!)
+    const { data: deletedSchedules, error: scheduleError } = await supabase
       .from('schedules')
       .delete()
-      .ilike('notes', `%${id}%`)
+      .ilike('notes', `%${event.name}%`)  // ✅ Use event NAME, not ID
+      .select()  // ✅ Return deleted rows to verify
 
-    // Then delete the event itself
-    const { error } = await supabase
+    if (scheduleError) {
+      console.error('❌ Failed to delete schedules:', scheduleError)
+      throw new Error(`Failed to delete schedules: ${scheduleError.message}`)
+    }
+
+    console.log(`📋 Deleted ${deletedSchedules?.length || 0} schedule entries`)
+
+    // ✅ FIX 3: Delete the event and CHECK if it was actually deleted
+    const { data: deletedEvent, error: deleteError } = await supabase
       .from('events')
       .delete()
       .eq('id', id)
+      .select()  // ✅ Return deleted row to verify
 
-    if (error) throw error
-    return { success: true }
+    if (deleteError) {
+      console.error('❌ Delete error:', deleteError)
+      throw new Error(`Failed to delete event: ${deleteError.message}`)
+    }
+
+    // ✅ FIX 4: Check if event was actually deleted
+    if (!deletedEvent || deletedEvent.length === 0) {
+      console.error('❌ Event was not deleted (RLS policy blocked it)')
+      throw new Error('Permission denied: You do not have permission to delete this event')
+    }
+
+    console.log('✅ Successfully deleted event:', event.name)
+    return { success: true, deletedSchedules: deletedSchedules?.length || 0 }
   })
 
 export const Route = createFileRoute('/_authed/events/$id')({
@@ -115,27 +151,33 @@ export const Route = createFileRoute('/_authed/events/$id')({
 
 function EventDetailPage() {
   const { event, assignedTrainers } = Route.useLoaderData()
-  const { user } = Route.useRouteContext() // 🆕 NEW: Get user context
-  const navigate = useNavigate() // 🆕 NEW: For navigation after delete
+  const { user } = Route.useRouteContext()
+  const navigate = useNavigate()
 
-  // 🆕 NEW: Helper function to check management access
+  // Helper function to check management access
   function canManage(role?: string): boolean {
     return role === 'ADMIN' || role === 'COORDINATOR'
   }
 
-  // 🆕 NEW: Delete handler
+  // ✅ FIXED: Delete handler with better error handling
   const handleDelete = async () => {
     if (!confirm(`Are you sure you want to delete "${event.name}"? This action cannot be undone.`)) {
       return
     }
 
     try {
-      await deleteEvent({ data: event.id.toString() })
-      alert('Event deleted successfully!')
+      const result = await deleteEvent({ data: event.id.toString() })
+      alert(`Event deleted successfully! (Removed ${result.deletedSchedules} schedule entries)`)
       navigate({ to: '/events' })
-    } catch (error) {
+    } catch (error: any) {
       console.error('Delete error:', error)
-      alert('Failed to delete event. Please try again.')
+      
+      // ✅ Show specific error message
+      if (error.message?.includes('Permission denied')) {
+        alert('Permission Denied: Only administrators can delete events.')
+      } else {
+        alert(`Failed to delete event: ${error.message || 'Unknown error'}`)
+      }
     }
   }
 
@@ -184,25 +226,24 @@ function EventDetailPage() {
         />
         <div className="p-6">
           <div className="flex items-start justify-between mb-4">
-            <div className="flex-1">
+            <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">{event.name}</h1>
               <div className="flex items-center space-x-2">
                 <span
-                  className="inline-block px-3 py-1 rounded-full text-sm font-semibold text-white"
+                  className="px-3 py-1 rounded-full text-sm font-semibold text-white"
                   style={{ backgroundColor: event.color }}
                 >
                   {event.category}
                 </span>
               </div>
             </div>
-
-            {/* Event Status Badge */}
             <div>
+              {/* Status Badge */}
               {new Date(event.end_date) < new Date() ? (
                 <span className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-semibold">
-                  Completed
+                  Past Event
                 </span>
-              ) : new Date(event.start_date) <= new Date() && new Date(event.end_date) >= new Date() ? (
+              ) : new Date(event.start_date) <= new Date() ? (
                 <span className="px-4 py-2 bg-green-100 text-green-700 rounded-lg font-semibold">
                   Ongoing
                 </span>
@@ -214,7 +255,7 @@ function EventDetailPage() {
             </div>
           </div>
 
-          {/* 🆕 NEW: Action Buttons - ADMIN/COORDINATOR Only */}
+          {/* Action Buttons - ADMIN/COORDINATOR Only */}
           {canManage(user?.role) && (
             <div className="flex gap-3 mb-6 pb-6 border-b">
               <Link
@@ -228,15 +269,18 @@ function EventDetailPage() {
                 <span>Edit Event</span>
               </Link>
 
-              <button
-                onClick={handleDelete}
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-semibold transition flex items-center justify-center space-x-2"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-                <span>Delete Event</span>
-              </button>
+              {/* ✅ ADMIN ONLY: Delete button */}
+              {user?.role === 'ADMIN' && (
+                <button
+                  onClick={handleDelete}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-semibold transition flex items-center justify-center space-x-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  <span>Delete Event</span>
+                </button>
+              )}
             </div>
           )}
 
