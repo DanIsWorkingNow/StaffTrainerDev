@@ -4,6 +4,6 @@ services:
     container_name: abpm-trainer
     restart: always
     ports:
-      - "9009:3000"
+      - "127.0.0.1:9009:3000"
     env_file:
       - .env
