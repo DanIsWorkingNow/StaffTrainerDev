@@ -1,17 +1,17 @@
-import { defineConfig } from '@tanstack/react-start/config'
+import { defineConfig } from 'vite'
+import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import tsConfigPaths from 'vite-tsconfig-paths'
 
 export default defineConfig({
-  // This is the crucial part for hosting
-  server: {
-    preset: 'node-server',
-  },
-  vite: {
-    plugins: [
-      tsConfigPaths({
-        projects: ['./tsconfig.json'],
-      }),
-      // Note: tanstackStart() is handled automatically by the defineConfig wrapper
-    ],
-  },
+  // We move the server preset here for the Vite plugin to pick up
+  plugins: [
+    tsConfigPaths({
+      projects: ['./tsconfig.json'],
+    }),
+    tanstackStart({
+      server: {
+        preset: 'node-server',
+      },
+    }),
+  ],
 })
