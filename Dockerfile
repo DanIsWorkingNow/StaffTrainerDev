@@ -15,10 +15,15 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Updated to match your build logs
+# 1. Copy package files to install production dependencies
+COPY --from=builder /app/package.json /app/package-lock.json* ./
+
+# 2. Install ONLY production dependencies (this fixes the missing @tanstack/history)
+RUN npm install --omit=dev
+
+# 3. Copy the build output
 COPY --from=builder /app/dist ./dist
 
 EXPOSE 3000
 
-# Start the server using the path found in your logs
 CMD ["node", "dist/server/server.js"]
