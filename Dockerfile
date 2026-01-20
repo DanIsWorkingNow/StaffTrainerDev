@@ -2,11 +2,9 @@
 FROM node:20-slim AS builder
 WORKDIR /app
 
-# Install dependencies first (better caching)
 COPY package.json package-lock.json* ./
 RUN npm install
 
-# Copy source and build project
 COPY . .
 RUN npm run build
 
@@ -14,14 +12,13 @@ RUN npm run build
 FROM node:20-slim AS runner
 WORKDIR /app
 
-# Set production environment
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Copy only the production build output
-COPY --from=builder /app/.output ./.output
+# Updated to match your build logs
+COPY --from=builder /app/dist ./dist
 
 EXPOSE 3000
 
-# Start the Nitro server provided by TanStack Start
-CMD ["node", ".output/server/index.mjs"]
+# Start the server using the path found in your logs
+CMD ["node", "dist/server/server.js"]
