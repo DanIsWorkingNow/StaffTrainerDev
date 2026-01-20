@@ -3,23 +3,36 @@ name: Docker Build and Push
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch: # Allows manual triggering
 
 env:
   REGISTRY: ghcr.io
-  # Converts repository name to lowercase to meet Docker requirements
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Required to see previous tags for versioning
+
+      # 1. Determine the next Semantic Version
+      - name: Bump version and push tag
+        id: tag_version
+        uses: anothrNick/github-tag-action@1.71.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WITH_V: true
+          DEFAULT_BUMP: patch
+          # Maps your keywords to semver logic
+          MINOR_STRING_TOKEN: "minor:"
+          MAJOR_STRING_TOKEN: "major:"
+          # If no keyword is found, it defaults to patch (x.x.x+1)
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -31,16 +44,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels)
+      # 2. Extract metadata using the new version tag
+      - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY  }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch
-            type=sha,format=short
-            latest
+            type=semver,pattern={{version}},value=${{ steps.tag_version.outputs.new_tag }}
+            type=raw,value=latest
 
+      # 3. Build and Push
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -48,6 +62,5 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Caching configuration to speed up npm install and build
           cache-from: type=gha
           cache-to: type=gha,mode=max
