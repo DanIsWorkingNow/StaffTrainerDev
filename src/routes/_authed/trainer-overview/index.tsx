@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { getSupabaseServerClient } from '~/utils/supabase'
 import { useState } from 'react'
@@ -140,6 +140,41 @@ export const Route = createFileRoute('/_authed/trainer-overview/')({
   },
   component: TrainerOverviewPage,
 })
+
+// Server function to delete a trainer
+const deleteTrainer = createServerFn({ method: 'POST' })
+  .inputValidator((data: { trainerId: number }) => data)
+  .handler(async ({ data }) => {
+    const supabase = getSupabaseServerClient()
+    
+    // Check if user is admin
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const { data: trainer } = await supabase
+      .from('trainers')
+      .select('role_id, roles(name)')
+      .eq('user_id', user.id)
+      .single()
+
+    // @ts-ignore
+    if (trainer?.roles?.name !== 'ADMIN') {
+      throw new Error('Unauthorized: Only admins can delete trainers')
+    }
+
+    // Soft delete
+    const { error } = await supabase
+      .from('trainers')
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq('id', data.trainerId)
+
+    if (error) {
+      console.error('Error deleting trainer:', error)
+      throw new Error('Failed to delete trainer')
+    }
+
+    return { success: true }
+  })
 
 // ===================================
 // PRAYER TIME MAPPINGS (Malaysian Times)
@@ -383,6 +418,10 @@ function TrainerOverviewPage() {
   const [viewMode, setViewMode] = useState<'directory' | 'dashboard'>('directory')
   const [showAddModal, setShowAddModal] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [filterRank, setFilterRank] = useState('')
+  const [filterSpecialization, setFilterSpecialization] = useState('')
+  const [filterDepartment, setFilterDepartment] = useState('')
+  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
 
   // State for fetched data
   const [religiousActivities, setReligiousActivities] = useState(initialData.religiousActivities)
@@ -653,15 +692,31 @@ function TrainerOverviewPage() {
     return days
   }
 
-  // Filter trainers based on search
-  const filteredTrainers = trainers.filter((t: any) => {
-    const searchLower = searchQuery.toLowerCase()
-    return (
-      t.name.toLowerCase().includes(searchLower) ||
-      t.rank.toLowerCase().includes(searchLower) ||
-      (t.roles?.name || '').toLowerCase().includes(searchLower)
-    )
-  })
+  // Enhanced filtering with rank, specialization, and department
+const filteredTrainersEnhanced = trainers.filter((t: any) => {
+  const searchLower = searchQuery.toLowerCase()
+  const matchesSearch = (
+    t.name.toLowerCase().includes(searchLower) ||
+    (t.rank || '').toLowerCase().includes(searchLower) ||
+    (t.roles?.name || '').toLowerCase().includes(searchLower)
+  )
+  const matchesRank = !filterRank || t.rank === filterRank
+  const matchesSpecialization = !filterSpecialization || t.specialization === filterSpecialization
+  const matchesDepartment = !filterDepartment || t.department === filterDepartment
+  
+  return matchesSearch && matchesRank && matchesSpecialization && matchesDepartment
+})
+
+  // Handler for deleting trainer
+  const handleDelete = async (trainerId: number) => {
+    try {
+      await deleteTrainer({ data: { trainerId } })
+      window.location.reload()
+    } catch (error) {
+      console.error('Failed to delete trainer:', error)
+      alert('Failed to delete trainer. Please try again.')
+    }
+  }
 
   const summary = getMonthlySummary()
   const days = getDaysInMonth()
@@ -698,115 +753,273 @@ function TrainerOverviewPage() {
         </div>
       </div>
 
-      {/* DIRECTORY VIEW */}
-      {viewMode === 'directory' && (
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">Trainer Directory</h2>
-            {user?.role === 'ADMIN' && (
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="bg-teal-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-teal-700 transition flex items-center gap-2"
-              >
-                <span className="text-xl">+</span> Add New
-              </button>
-            )}
-          </div>
+     {/* DIRECTORY VIEW - ENHANCED with Filtering and Profile Links */}
+{viewMode === 'directory' && (
+  <>
+    {/* Filters Section */}
+    <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+      <h2 className="text-xl font-bold text-gray-900 mb-4">🔍 Search & Filter</h2>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        {/* Search */}
+        <div className="lg:col-span-2">
+          <label className="block text-sm font-semibold text-gray-700 mb-2">
+            Search by Name
+          </label>
+          <input
+            type="text"
+            placeholder="Search trainers..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-teal-500 focus:outline-none"
+          />
+        </div>
 
-          {/* Search Bar */}
-          <div className="mb-6">
-            <input
-              type="text"
-              placeholder="Search by name, rank, or role..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-            />
-          </div>
+        {/* Rank Filter */}
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-2">
+            Filter by Rank
+          </label>
+          <select
+            value={filterRank}
+            onChange={(e) => setFilterRank(e.target.value)}
+            className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-teal-500 focus:outline-none"
+          >
+            <option value="">All Ranks</option>
+            {Array.from(new Set(trainers.map((t: any) => t.rank).filter(Boolean))).sort().map((rank: any) => (
+              <option key={rank} value={rank}>{rank}</option>
+            ))}
+          </select>
+        </div>
 
-          {/* Trainers Table */}
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b-2 border-gray-200">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Trainer
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Rank
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Role
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredTrainers.map((t: any) => (
-                  <tr key={t.id} className="hover:bg-gray-50 transition">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0 h-10 w-10">
-                          <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-lg">
-                            {t.name.charAt(0).toUpperCase()}
-                          </div>
-                        </div>
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">{t.name}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{t.rank}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${t.roles?.name === 'ADMIN'
-                          ? 'bg-purple-100 text-purple-800'
-                          : t.roles?.name === 'COORDINATOR'
-                            ? 'bg-blue-100 text-blue-800'
-                            : 'bg-green-100 text-green-800'
-                        }`}>
-                        {t.roles?.name || 'TRAINER'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${t.status === 'active'
-                          ? 'bg-green-100 text-green-800'
-                          : t.status === 'lead'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                        {t.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <button
-                        onClick={() => handleViewTrainer(t.id)}
-                        className="text-blue-600 hover:text-blue-900 font-semibold"
-                      >
-                        View Schedule
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {/* Specialization Filter */}
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-2">
+            Filter by Specialization
+          </label>
+          <select
+            value={filterSpecialization}
+            onChange={(e) => setFilterSpecialization(e.target.value)}
+            className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-teal-500 focus:outline-none"
+          >
+            <option value="">All Specializations</option>
+            {Array.from(new Set(trainers.map((t: any) => t.specialization).filter(Boolean))).sort().map((spec: any) => (
+              <option key={spec} value={spec}>{spec}</option>
+            ))}
+          </select>
+        </div>
 
-            {filteredTrainers.length === 0 && (
-              <div className="text-center py-12 text-gray-500">
-                <div className="text-4xl mb-2">🔍</div>
-                <div className="text-lg">No trainers found</div>
-                <div className="text-sm">Try adjusting your search query</div>
-              </div>
-            )}
-          </div>
+        {/* Department Filter */}
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-2">
+            Filter by Department
+          </label>
+          <select
+            value={filterDepartment}
+            onChange={(e) => setFilterDepartment(e.target.value)}
+            className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-teal-500 focus:outline-none"
+          >
+            <option value="">All Departments</option>
+            {Array.from(new Set(trainers.map((t: any) => t.department).filter(Boolean))).sort().map((dept: any) => (
+              <option key={dept} value={dept}>{dept}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Active Filters Summary */}
+      {(searchQuery || filterRank || filterSpecialization || filterDepartment) && (
+        <div className="mt-4 flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-semibold text-gray-700">Active Filters:</span>
+          {searchQuery && (
+            <span className="px-3 py-1 bg-teal-100 text-teal-800 rounded-full text-sm">
+              Search: "{searchQuery}"
+              <button onClick={() => setSearchQuery('')} className="ml-2">✕</button>
+            </span>
+          )}
+          {filterRank && (
+            <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+              Rank: {filterRank}
+              <button onClick={() => setFilterRank('')} className="ml-2">✕</button>
+            </span>
+          )}
+          {filterSpecialization && (
+            <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
+              Spec: {filterSpecialization}
+              <button onClick={() => setFilterSpecialization('')} className="ml-2">✕</button>
+            </span>
+          )}
+          {filterDepartment && (
+            <span className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm">
+              Dept: {filterDepartment}
+              <button onClick={() => setFilterDepartment('')} className="ml-2">✕</button>
+            </span>
+          )}
+          <button
+            onClick={() => {
+              setSearchQuery('')
+              setFilterRank('')
+              setFilterSpecialization('')
+              setFilterDepartment('')
+            }}
+            className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm font-semibold hover:bg-red-200"
+          >
+            Clear All
+          </button>
         </div>
       )}
+
+      {/* Results Count */}
+      <div className="mt-4 text-sm text-gray-600">
+        Showing <span className="font-bold text-gray-900">{filteredTrainersEnhanced.length}</span> of <span className="font-bold text-gray-900">{trainers.length}</span> trainers
+      </div>
+    </div>
+
+    {/* Trainer Directory Table */}
+    <div className="bg-white rounded-lg shadow-lg">
+      <div className="p-6 border-b flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gray-900">Trainer Directory</h2>
+        {user?.role === 'ADMIN' && (
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="bg-teal-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-teal-700 transition flex items-center gap-2"
+          >
+            <span className="text-xl">+</span> Add New
+          </button>
+        )}
+      </div>
+      
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-gray-50 border-b-2 border-gray-200">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                Trainer
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                Rank
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                Department
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                Role
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                Status
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            {filteredTrainersEnhanced.map((t: any) => (
+              <tr key={t.id} className="hover:bg-gray-50 transition">
+                <td className="px-6 py-4">
+                  <div className="flex items-center">
+                    <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">
+                      {t.name.charAt(0)}
+                    </div>
+                    <div className="ml-4">
+                      <Link
+                        to="/trainer-overview/$id"
+                        params={{ id: t.id.toString() }}
+                        className="text-blue-600 hover:text-blue-800 font-semibold hover:underline cursor-pointer"
+                      >
+                        {t.name}
+                      </Link>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-6 py-4 text-sm text-gray-900">
+                  {t.rank || '-'}
+                </td>
+                <td className="px-6 py-4 text-sm text-gray-700">
+                  {t.department || '-'}
+                </td>
+                <td className="px-6 py-4">
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                    t.roles?.name === 'ADMIN' 
+                      ? 'bg-purple-100 text-purple-800'
+                      : t.roles?.name === 'COORDINATOR'
+                      ? 'bg-blue-100 text-blue-800'
+                      : 'bg-green-100 text-green-800'
+                  }`}>
+                    {t.roles?.name || 'TRAINER'}
+                  </span>
+                </td>
+                <td className="px-6 py-4">
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                    t.status === 'active'
+                      ? 'bg-green-100 text-green-800'
+                      : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {t.status || 'active'}
+                  </span>
+                </td>
+                <td className="px-6 py-4">
+                  <div className="flex items-center gap-2 text-sm">
+                    <button
+                      onClick={() => handleViewTrainer(t.id)}
+                      className="text-blue-600 hover:text-blue-900 font-semibold"
+                    >
+                      View Schedule
+                    </button>
+                    {user?.role === 'ADMIN' && (
+                      <>
+                        <span className="text-gray-300">|</span>
+                        <Link
+                          to="/trainer-overview/edit/$id"
+                          params={{ id: t.id.toString() }}
+                          className="text-orange-600 hover:text-orange-800 font-semibold"
+                        >
+                          Edit
+                        </Link>
+                        <span className="text-gray-300">|</span>
+                        {deleteConfirm === t.id ? (
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleDelete(t.id)}
+                              className="text-red-600 hover:text-red-800 font-semibold"
+                            >
+                              Confirm?
+                            </button>
+                            <button
+                              onClick={() => setDeleteConfirm(null)}
+                              className="text-gray-600 hover:text-gray-800 font-semibold"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setDeleteConfirm(t.id)}
+                            className="text-red-600 hover:text-red-800 font-semibold"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {filteredTrainersEnhanced.length === 0 && (
+          <div className="text-center py-12 text-gray-500">
+            <p className="text-lg font-semibold">No trainers found</p>
+            <p className="text-sm mt-2">Try adjusting your search or filters</p>
+          </div>
+        )}
+      </div>
+    </div>
+  </>
+)}
+
 
       {/* DASHBOARD VIEW */}
       {viewMode === 'dashboard' && (
