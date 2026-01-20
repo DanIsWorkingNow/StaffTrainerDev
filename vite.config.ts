@@ -1,17 +1,18 @@
-import { defineConfig } from 'vite'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
+import { defineConfig } from 'vite'
 import tsConfigPaths from 'vite-tsconfig-paths'
+import viteReact from '@vitejs/plugin-react'
+import { nitro } from 'nitro/vite' // <-- Add this import
 
 export default defineConfig({
-  // We move the server preset here for the Vite plugin to pick up
   plugins: [
     tsConfigPaths({
       projects: ['./tsconfig.json'],
     }),
-    tanstackStart({
-      server: {
-        preset: 'node-server',
-      },
+    tanstackStart(),
+    viteReact(),
+    nitro({ 
+      preset: 'node-server' // This fixes the "Exit Code 0" issue
     }),
   ],
 })
