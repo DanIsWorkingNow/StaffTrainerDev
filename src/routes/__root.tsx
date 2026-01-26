@@ -14,14 +14,14 @@ import { NotFound } from '../components/NotFound'
 import appCss from '../styles/app.css?url'
 import { seo } from '../utils/seo'
 import { getSupabaseServerClient } from '../utils/supabase'
-import { getCurrentUserRole } from '../middleware/rbac'
+import { getCurrentUserRole, type UserRole } from '../middleware/rbac'
 
 // UPDATED: Enhanced fetchUser to include more user data
 export interface UserContext {
   id: string
   email: string
   name?: string
-  role?: string
+  role?: UserRole
   rank?: string
   region?: string
   status?: string
@@ -37,14 +37,13 @@ const fetchUser = createServerFn({ method: 'GET' }).handler(async (): Promise<Us
       id: rbacUser.userId,
       email: rbacUser.email,
       name: rbacUser.name,
-      role: rbacUser.role, // This comes from roles table
+      role: rbacUser.role,
       rank: rbacUser.rank,
-      // Status and region are not in rbacUser yet, if needed we can fetch or default
       status: 'active',
     }
   }
 
-  // 2. Fallback to users table if not a trainer (e.g. basic user or broken link)
+  // 2. Fallback to users table if not a trainer
   const supabase = getSupabaseServerClient()
   const { data: { user }, error: _error } = await supabase.auth.getUser()
 
@@ -74,10 +73,7 @@ const fetchUser = createServerFn({ method: 'GET' }).handler(async (): Promise<Us
 export const Route = createRootRoute({
   beforeLoad: async () => {
     const user = await fetchUser()
-
-    return {
-      user,
-    }
+    return { user }
   },
   head: () => ({
     meta: [
@@ -135,6 +131,31 @@ function RootComponent() {
   )
 }
 
+// ============================================================================
+// HELPER FUNCTIONS FOR RESTRICTED TAB ACCESS
+// CORRECTED: Only Dormitory and Overview tabs are restricted
+// All other tabs (Events, PT, Religious) are visible to everyone
+// ============================================================================
+
+/**
+ * CRITICAL: Check if user can access Dormitory tab
+ * Only ADMIN, COORDINATOR, and DORMITORY COORDINATOR can see this tab
+ */
+function canAccessDormitoryTab(role?: UserRole): boolean {
+  if (!role) return false
+  return ['ADMIN', 'COORDINATOR', 'DORMITORY COORDINATOR'].includes(role)
+}
+
+/**
+ * Check if user can access Overview tab
+ * Only ADMIN and COORDINATOR can see this tab
+ * Specialized coordinators (EVENT, PT, RA, DORMITORY) cannot see Overview
+ */
+function canAccessOverviewTab(role?: UserRole): boolean {
+  if (!role) return false
+  return ['ADMIN', 'COORDINATOR'].includes(role)
+}
+
 function RootDocument({ children }: { children: React.ReactNode }) {
   const { user } = Route.useRouteContext()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false)
@@ -162,26 +183,35 @@ function RootDocument({ children }: { children: React.ReactNode }) {
                 </div>
               </div>
 
-              {/* Desktop Navigation */}
+              {/* CORRECTED: Desktop Navigation - Most tabs visible to all */}
               <div className="hidden md:flex items-center space-x-1">
+                {/* Home - Visible to all */}
                 <NavLink to="/" label="Home" icon="🏠" />
+                
+                {/* Schedule - Visible to all */}
                 <NavLink to="/schedule" label="Schedule" icon="📅" />
+                
+                {/* Events - Visible to all (content filtered inside) */}
                 <NavLink to="/events" label="Events" icon="📋" />
-                {user?.role !== 'TRAINER' && (
-                  <>
-                    <NavLink to="/dormitory" label="Dormitory" icon="🏢" />
-                  </>
-                )}
+                
+                {/* Physical Training - Visible to all (content filtered inside) */}
                 <NavLink to="/physical-training" label="PT" icon="💪" />
+                
+                {/* Religious Activity - Visible to all (content filtered inside) */}
                 <NavLink to="/religious-activity" label="Religious" icon="📖" />
-                {user?.role !== 'TRAINER' && (
-                  <>
-                    <NavLink to="/trainer-overview" label="Overview" icon="👥" />
-                  </>
+                
+                {/* RESTRICTED: Dormitory - ONLY ADMIN, COORDINATOR, DORMITORY COORDINATOR */}
+                {canAccessDormitoryTab(user?.role) && (
+                  <NavLink to="/dormitory" label="Dormitory" icon="🏢" />
+                )}
+                
+                {/* RESTRICTED: Overview - ONLY ADMIN, COORDINATOR */}
+                {canAccessOverviewTab(user?.role) && (
+                  <NavLink to="/trainer-overview" label="Overview" icon="👥" />
                 )}
               </div>
 
-              {/* UPDATED: User Menu with Profile Dropdown */}
+              {/* User Menu with Profile Dropdown */}
               <div className="flex items-center space-x-4">
                 {user ? (
                   <>
@@ -205,6 +235,24 @@ function RootDocument({ children }: { children: React.ReactNode }) {
                       <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
                         <div className="px-4 py-3 border-b border-gray-200">
                           <p className="text-sm font-semibold text-gray-900 truncate">{user.email}</p>
+                          {/* Role badge */}
+                          {user.role && (
+                            <span className={`inline-block mt-1 px-2 py-0.5 text-xs font-semibold rounded ${
+                              user.role === 'ADMIN' ? 'bg-red-100 text-red-800' :
+                              user.role === 'COORDINATOR' ? 'bg-blue-100 text-blue-800' :
+                              user.role === 'EVENT COORDINATOR' ? 'bg-orange-100 text-orange-800' :
+                              user.role === 'PT COORDINATOR' ? 'bg-green-100 text-green-800' :
+                              user.role === 'RA COORDINATOR' ? 'bg-teal-100 text-teal-800' :
+                              user.role === 'DORMITORY COORDINATOR' ? 'bg-indigo-100 text-indigo-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {user.role === 'EVENT COORDINATOR' ? 'Event Coord' :
+                               user.role === 'PT COORDINATOR' ? 'PT Coord' :
+                               user.role === 'RA COORDINATOR' ? 'Religious Coord' :
+                               user.role === 'DORMITORY COORDINATOR' ? 'Dorm Coord' :
+                               user.role}
+                            </span>
+                          )}
                           <p className="text-xs text-gray-500 mt-1">Signed in</p>
                         </div>
 
@@ -249,11 +297,11 @@ function RootDocument({ children }: { children: React.ReactNode }) {
               </div>
             </div>
 
-            {/* UPDATED: Mobile Menu with Profile Section */}
+            {/* CORRECTED: Mobile Menu - Most tabs visible to all */}
             {isMobileMenuOpen && (
               <div className="md:hidden py-4 border-t border-red-800">
                 <div className="flex flex-col space-y-2">
-                  {/* NEW: Profile Section for Mobile */}
+                  {/* Profile Section for Mobile */}
                   {user && (
                     <>
                       <div className="border-b border-red-800 pb-3 mb-3">
@@ -265,7 +313,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
                           </div>
                           <div>
                             <p className="font-semibold text-white text-sm">{user.email}</p>
-                            <p className="text-xs text-orange-200">Signed in</p>
+                            {user.role && (
+                              <p className="text-xs text-orange-200">{user.role}</p>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -279,7 +329,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
                     </>
                   )}
 
-                  {/* Existing Mobile Navigation Links */}
+                  {/* Mobile Navigation Links - Most visible to all */}
                   <MobileNavLink
                     to="/"
                     label="Home"
@@ -292,13 +342,33 @@ function RootDocument({ children }: { children: React.ReactNode }) {
                     icon="📅"
                     onClick={() => setIsMobileMenuOpen(false)}
                   />
+                  
+                  {/* Events - Visible to all */}
                   <MobileNavLink
                     to="/events"
                     label="Events"
                     icon="📋"
                     onClick={() => setIsMobileMenuOpen(false)}
                   />
-                  {user?.role !== 'TRAINER' && (
+                  
+                  {/* Physical Training - Visible to all */}
+                  <MobileNavLink
+                    to="/physical-training"
+                    label="Physical Training"
+                    icon="💪"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  />
+                  
+                  {/* Religious Activity - Visible to all */}
+                  <MobileNavLink
+                    to="/religious-activity"
+                    label="Religious Activity"
+                    icon="📖"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  />
+                  
+                  {/* RESTRICTED: Dormitory - Only authorized roles */}
+                  {canAccessDormitoryTab(user?.role) && (
                     <MobileNavLink
                       to="/dormitory"
                       label="Dormitory"
@@ -306,19 +376,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
                       onClick={() => setIsMobileMenuOpen(false)}
                     />
                   )}
-                  <MobileNavLink
-                    to="/physical-training"
-                    label="Physical Training"
-                    icon="💪"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  />
-                  <MobileNavLink
-                    to="/religious-activity"
-                    label="Religious Activity"
-                    icon="📖"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  />
-                  {user?.role !== 'TRAINER' && (
+                  
+                  {/* RESTRICTED: Overview - Only ADMIN and COORDINATOR */}
+                  {canAccessOverviewTab(user?.role) && (
                     <MobileNavLink
                       to="/trainer-overview"
                       label="Trainer Overview"
@@ -361,7 +421,7 @@ function NavLink({ to, label, icon }: { to: string; label: string; icon: string 
   )
 }
 
-// UPDATED: Mobile Navigation Link Component with onClick support
+// Mobile Navigation Link Component
 function MobileNavLink({
   to,
   label,

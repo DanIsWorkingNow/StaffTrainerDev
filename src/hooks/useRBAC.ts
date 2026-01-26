@@ -4,13 +4,6 @@ import {
   type UserRoleData, 
   type Permission,
   type UserRole,
-  // Import client-side helper functions from rbac
-  canAccessDormitoryClient,
-  canAccessEventsClient,
-  canAccessPTClient,
-  canAccessReligiousClient,
-  canAccessOverviewClient,
-  canManageModuleClient,
 } from '~/middleware/rbac'
 
 // ============================================================================
@@ -31,7 +24,6 @@ export function useCurrentUserRole() {
     const fetchUserRole = async () => {
       try {
         setIsLoading(true)
-        // Call the server function
         const result = await getCurrentUserRole()
         if (mounted) {
           setData(result)
@@ -108,8 +100,7 @@ export function useIsTrainer(): boolean {
 }
 
 /**
- * UPDATED: Hook to check if user has required role
- * Now supports all 7 role types including specialized coordinators
+ * Hook to check if user has required role
  */
 export function useHasRole(allowedRoles: UserRole[]): boolean {
   const { data: userData } = useCurrentUserRole()
@@ -118,77 +109,112 @@ export function useHasRole(allowedRoles: UserRole[]): boolean {
 }
 
 // ============================================================================
-// NEW: MODULE ACCESS HOOKS (for UI visibility)
+// CORRECTED: TAB ACCESS HOOKS
+// Only Dormitory and Overview tabs are restricted
+// All other tabs are visible to everyone (content is filtered inside pages)
 // ============================================================================
 
 /**
- * CRITICAL: Hook to check if user can access dormitory module
+ * CRITICAL: Hook to check if user can ACCESS Dormitory TAB
  * Returns true only for: ADMIN, COORDINATOR, DORMITORY COORDINATOR
- * Returns false for: EVENT, PT, RA coordinators, TRAINER
+ * This controls TAB VISIBILITY, not content access
  */
-export function useCanAccessDormitory(): boolean {
+export function useCanAccessDormitoryTab(): boolean {
   const { data: userData } = useCurrentUserRole()
   if (!userData) return false
-  return canAccessDormitoryClient(userData.role)
+  return ['ADMIN', 'COORDINATOR', 'DORMITORY COORDINATOR'].includes(userData.role)
 }
 
 /**
- * Hook to check if user can access events module
+ * Hook to check if user can ACCESS Overview TAB
+ * Returns true only for: ADMIN, COORDINATOR
+ * Specialized coordinators cannot see Overview tab
+ */
+export function useCanAccessOverviewTab(): boolean {
+  const { data: userData } = useCurrentUserRole()
+  if (!userData) return false
+  return ['ADMIN', 'COORDINATOR'].includes(userData.role)
+}
+
+// ============================================================================
+// NEW: MANAGEMENT PERMISSION HOOKS
+// These control who can CREATE/EDIT/DELETE in each module
+// ============================================================================
+
+/**
+ * Hook to check if user can MANAGE Events module
+ * Can create/edit/delete events and assign trainers
  * Returns true for: ADMIN, COORDINATOR, EVENT COORDINATOR
  */
-export function useCanAccessEvents(): boolean {
+export function useCanManageEvents(): boolean {
   const { data: userData } = useCurrentUserRole()
   if (!userData) return false
-  return canAccessEventsClient(userData.role)
+  return ['ADMIN', 'COORDINATOR', 'EVENT COORDINATOR'].includes(userData.role)
 }
 
 /**
- * Hook to check if user can access physical training module
+ * Hook to check if user can MANAGE Physical Training module
+ * Can create/edit/delete PT sessions and assign trainers
  * Returns true for: ADMIN, COORDINATOR, PT COORDINATOR
  */
-export function useCanAccessPT(): boolean {
+export function useCanManagePT(): boolean {
   const { data: userData } = useCurrentUserRole()
   if (!userData) return false
-  return canAccessPTClient(userData.role)
+  return ['ADMIN', 'COORDINATOR', 'PT COORDINATOR'].includes(userData.role)
 }
 
 /**
- * Hook to check if user can access religious activities module
+ * Hook to check if user can MANAGE Religious Activities module
+ * Can create/edit/delete activities and assign trainers
  * Returns true for: ADMIN, COORDINATOR, RA COORDINATOR
  */
-export function useCanAccessReligious(): boolean {
+export function useCanManageReligious(): boolean {
   const { data: userData } = useCurrentUserRole()
   if (!userData) return false
-  return canAccessReligiousClient(userData.role)
+  return ['ADMIN', 'COORDINATOR', 'RA COORDINATOR'].includes(userData.role)
 }
 
 /**
- * Hook to check if user can access trainer overview
- * Returns true for: ADMIN, COORDINATOR (not specialized coordinators)
+ * Hook to check if user can MANAGE Dormitory module
+ * Can create/edit/delete dormitory assignments
+ * Returns true for: ADMIN, COORDINATOR, DORMITORY COORDINATOR
  */
-export function useCanAccessOverview(): boolean {
+export function useCanManageDormitory(): boolean {
   const { data: userData } = useCurrentUserRole()
   if (!userData) return false
-  return canAccessOverviewClient(userData.role)
+  return ['ADMIN', 'COORDINATOR', 'DORMITORY COORDINATOR'].includes(userData.role)
 }
 
 /**
- * Generic hook to check module access
+ * Generic hook to check if user can manage a specific module
  * @param module - Module name ('events', 'pt', 'religious', 'dormitory')
  */
 export function useCanManageModule(module: string): boolean {
   const { data: userData } = useCurrentUserRole()
   if (!userData) return false
-  return canManageModuleClient(userData.role, module)
+  
+  switch (module) {
+    case 'events':
+      return ['ADMIN', 'COORDINATOR', 'EVENT COORDINATOR'].includes(userData.role)
+    case 'pt':
+    case 'physical-training':
+      return ['ADMIN', 'COORDINATOR', 'PT COORDINATOR'].includes(userData.role)
+    case 'religious':
+    case 'religious-activity':
+      return ['ADMIN', 'COORDINATOR', 'RA COORDINATOR'].includes(userData.role)
+    case 'dormitory':
+      return ['ADMIN', 'COORDINATOR', 'DORMITORY COORDINATOR'].includes(userData.role)
+    default:
+      return false
+  }
 }
 
 // ============================================================================
-// NEW: SPECIALIZED COORDINATOR CHECK HOOKS
+// SPECIALIZED COORDINATOR CHECK HOOKS
 // ============================================================================
 
 /**
- * Hook to check if user is EVENT COORDINATOR or above
- * Returns true for: ADMIN, COORDINATOR, EVENT COORDINATOR
+ * Hook to check if user is EVENT COORDINATOR (or above)
  */
 export function useIsEventCoordinator(): boolean {
   const { data: userData } = useCurrentUserRole()
@@ -197,8 +223,7 @@ export function useIsEventCoordinator(): boolean {
 }
 
 /**
- * Hook to check if user is PT COORDINATOR or above
- * Returns true for: ADMIN, COORDINATOR, PT COORDINATOR
+ * Hook to check if user is PT COORDINATOR (or above)
  */
 export function useIsPTCoordinator(): boolean {
   const { data: userData } = useCurrentUserRole()
@@ -207,8 +232,7 @@ export function useIsPTCoordinator(): boolean {
 }
 
 /**
- * Hook to check if user is RA COORDINATOR or above
- * Returns true for: ADMIN, COORDINATOR, RA COORDINATOR
+ * Hook to check if user is RA COORDINATOR (or above)
  */
 export function useIsRACoordinator(): boolean {
   const { data: userData } = useCurrentUserRole()
@@ -217,8 +241,7 @@ export function useIsRACoordinator(): boolean {
 }
 
 /**
- * Hook to check if user is DORMITORY COORDINATOR or above
- * Returns true for: ADMIN, COORDINATOR, DORMITORY COORDINATOR
+ * Hook to check if user is DORMITORY COORDINATOR (or above)
  */
 export function useIsDormitoryCoordinator(): boolean {
   const { data: userData } = useCurrentUserRole()
@@ -231,47 +254,83 @@ export function useIsDormitoryCoordinator(): boolean {
 // ============================================================================
 
 /*
-// In a React component:
+// EXAMPLE 1: In Events Page Component
+import { useCanManageEvents, useCurrentUserRole } from '~/hooks/useRBAC'
 
-import { 
-  useCurrentUserRole, 
-  useCanAccessDormitory, 
-  useCanAccessEvents 
-} from '~/hooks/useRBAC'
-
-function MyComponent() {
+function EventsPage() {
   const { data: user } = useCurrentUserRole()
-  const canSeeDormitory = useCanAccessDormitory()
-  const canSeeEvents = useCanAccessEvents()
+  const canManage = useCanManageEvents()  // Can create/edit/delete?
+  
+  // Fetch data based on role
+  const { data: events } = useQuery({
+    queryFn: async () => {
+      if (canManage) {
+        // Show ALL events
+        return supabase.from('events').select('*')
+      } else {
+        // Show only events assigned to this user
+        return supabase.from('events')
+          .select('*')
+          .eq('assigned_trainer_id', user.trainerId)
+      }
+    }
+  })
+  
+  return (
+    <div>
+      <h1>Events</h1>
+      
+      {// Show create button only if can manage
+      {canManage && (
+        <button onClick={openCreateDialog}>Create Event</button>
+      )}
+      
+      <EventsList 
+        events={events} 
+        canEdit={canManage}
+        canDelete={canManage}
+      />
+    </div>
+  )
+}
+
+// EXAMPLE 2: In Navigation (checking TAB visibility)
+import { useCanAccessDormitoryTab } from '~/hooks/useRBAC'
+
+function Navigation() {
+  const canSeeDormitoryTab = useCanAccessDormitoryTab()
   
   return (
     <nav>
-      {canSeeEvents && <NavLink to="/events">Events</NavLink>}
-      {canSeeDormitory && <NavLink to="/dormitory">Dormitory</NavLink>}
+      <NavLink to="/events">Events</NavLink>  {// Visible to all
+      <NavLink to="/physical-training">PT</NavLink>  {// Visible to all
+      
+      {// Only show Dormitory tab to authorized roles
+      {canSeeDormitoryTab && (
+        <NavLink to="/dormitory">Dormitory</NavLink>
+      )}
     </nav>
   )
 }
 
-// Conditional rendering in components:
+// EXAMPLE 3: In Event Card Component
+import { useCanManageEvents } from '~/hooks/useRBAC'
 
-function DormitoryButton() {
-  const canAccess = useCanAccessDormitory()
-  
-  if (!canAccess) return null
-  
-  return <button>Manage Dormitory</button>
-}
-
-// Using with role checks:
-
-function AdminPanel() {
-  const isAdmin = useIsAdmin()
-  const isEventCoord = useIsEventCoordinator()
+function EventCard({ event }) {
+  const canManage = useCanManageEvents()
   
   return (
-    <div>
-      {isAdmin && <AdminControls />}
-      {isEventCoord && <EventManagement />}
+    <div className="event-card">
+      <h3>{event.title}</h3>
+      <p>{event.description}</p>
+      
+      {// Show edit/delete buttons only if can manage
+      {canManage && (
+        <div className="actions">
+          <button onClick={() => editEvent(event)}>Edit</button>
+          <button onClick={() => deleteEvent(event)}>Delete</button>
+        </div>
+      )}
     </div>
   )
 }
@@ -280,25 +339,28 @@ function AdminPanel() {
 // ============================================================================
 // EXPORTS SUMMARY
 // ============================================================================
-// Original Hooks (unchanged):
-// - useCurrentUserRole() - Main hook for user data
+// Original Hooks:
+// - useCurrentUserRole() - Get user data
 // - useHasPermission() - Check specific permission
 // - useIsAdmin() - Check if ADMIN
 // - useIsCoordinatorOrAbove() - Check if COORDINATOR or ADMIN
 // - useIsTrainer() - Check if TRAINER
-// - useHasRole() - Check if has required role (UPDATED type)
+// - useHasRole() - Check if has required role
 //
-// New Module Access Hooks:
-// - useCanAccessDormitory() - CRITICAL for dormitory menu
-// - useCanAccessEvents() - For events menu
-// - useCanAccessPT() - For PT menu
-// - useCanAccessReligious() - For religious menu
-// - useCanAccessOverview() - For overview menu
-// - useCanManageModule() - Generic module check
+// Tab Access Hooks (CORRECTED - only 2 tabs restricted):
+// - useCanAccessDormitoryTab() - Can see Dormitory TAB
+// - useCanAccessOverviewTab() - Can see Overview TAB
 //
-// New Specialized Coordinator Hooks:
-// - useIsEventCoordinator() - EVENT COORDINATOR check
-// - useIsPTCoordinator() - PT COORDINATOR check
-// - useIsRACoordinator() - RA COORDINATOR check
-// - useIsDormitoryCoordinator() - DORMITORY COORDINATOR check
+// Management Permission Hooks (NEW - control create/edit/delete):
+// - useCanManageEvents() - Can manage Events module
+// - useCanManagePT() - Can manage PT module
+// - useCanManageReligious() - Can manage Religious module
+// - useCanManageDormitory() - Can manage Dormitory module
+// - useCanManageModule() - Generic management check
+//
+// Coordinator Type Hooks:
+// - useIsEventCoordinator() - Is EVENT COORDINATOR
+// - useIsPTCoordinator() - Is PT COORDINATOR
+// - useIsRACoordinator() - Is RA COORDINATOR
+// - useIsDormitoryCoordinator() - Is DORMITORY COORDINATOR
 // ============================================================================
