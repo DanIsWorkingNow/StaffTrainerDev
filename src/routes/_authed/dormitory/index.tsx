@@ -2,6 +2,7 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { getSupabaseServerClient } from '~/utils/supabase'
 import { useState } from 'react'
+import { useCanManageDormitory } from '~/hooks/useRBAC'  // ADD THIS
 
 // Types for dormitory structure
 type BuildingType = 'ANGGERIK' | 'BOUGANVILLA' | 'RAFLESIA' | 'SEROJA' | 'LESTARI_4' | 'LESTARI_5' | 'LESTARI_6'
@@ -122,11 +123,13 @@ const removeTrainer = createServerFn({ method: 'POST' })
 
 export const Route = createFileRoute('/_authed/dormitory/')({
   beforeLoad: ({ context }) => {
-    // Check if user exists and has TRAINER role
-    if (context.user?.role === 'TRAINER') {
-      throw new Error('Unauthorized Access: Trainers cannot access dormitory management')
-    }
-  },
+  // UPDATED: Only allow ADMIN, COORDINATOR, DORMITORY COORDINATOR
+  const allowedRoles = ['ADMIN', 'COORDINATOR', 'DORMITORY COORDINATOR']
+  
+  if (!context.user?.role || !allowedRoles.includes(context.user.role)) {
+    throw new Error('Unauthorized Access: Only ADMIN, COORDINATOR, and DORMITORY COORDINATOR can access dormitory management')
+  }
+},
   loader: async () => await getDormitoryData(),
   component: DormitoryPage,
 })
@@ -310,6 +313,10 @@ function DormitoryPage() {
   const [selectedFloor, setSelectedFloor] = useState<number | 'all'>('all')
   const [searchTerm, setSearchTerm] = useState('')
 
+  const data = Route.useLoaderData()
+  // ADD THIS LINE:
+  const canManage = useCanManageDormitory()  // Check if user can manage
+
   // Assignment form state
   const [selectedTrainer, setSelectedTrainer] = useState<string>('')
   const [selectedRoom, setSelectedRoom] = useState<string>('')
@@ -438,6 +445,7 @@ function DormitoryPage() {
     setSelectedBuilding(building)
     setSelectedFloor('all')
   }
+
 
   return (
     <div className="space-y-6">
@@ -676,6 +684,7 @@ function DormitoryPage() {
                 room={room}
                 onRemove={handleRemove}
                 isRemoving={isRemoving}
+                canManage={canManage}  // ADD THIS
               />
             ))}
           </div>
@@ -735,10 +744,11 @@ function StatCard({ title, value, icon, color }: {
 }
 
 // Room Card Component
-function RoomCard({ room, onRemove, isRemoving }: {
+function RoomCard({ room, onRemove, isRemoving, canManage }: {
   room: any;
   onRemove: (assignmentId: number) => void;
   isRemoving: boolean;
+   canManage: boolean;  // ADD THIS TYPE
 }) {
   const { id, roomNumber, capacity, assignments, buildingDisplayName, buildingColor, floorName, type } = room
   const currentOccupancy = assignments.length
@@ -787,6 +797,7 @@ function RoomCard({ room, onRemove, isRemoving }: {
             onRemove={onRemove}
             isRemoving={isRemoving}
             isQuarters={type === 'quarters'}
+            canManage={canManage}  // ADD THIS
           />
         ))}
       </div>
@@ -795,7 +806,7 @@ function RoomCard({ room, onRemove, isRemoving }: {
 }
 
 // Individual Occupant Slot Component
-function OccupantSlot({ slotNumber, trainer, assignment, occupied, onRemove, isRemoving, isQuarters }: {
+function OccupantSlot({ slotNumber, trainer, assignment, occupied, onRemove, isRemoving, isQuarters,canManage}: {
   slotNumber: number;
   trainer: any;
   assignment: any;
@@ -803,6 +814,7 @@ function OccupantSlot({ slotNumber, trainer, assignment, occupied, onRemove, isR
   onRemove: (assignmentId: number) => void;
   isRemoving: boolean;
   isQuarters: boolean;
+  canManage: boolean; 
 }) {
   if (occupied && trainer && assignment) {
     // Occupied slot - red background with trainer name
@@ -813,7 +825,8 @@ function OccupantSlot({ slotNumber, trainer, assignment, occupied, onRemove, isR
         </p>
         <p className="text-xs text-gray-600 mt-1">{trainer.rank}</p>
 
-        {/* Remove button - shows on hover */}
+          {/* UPDATED: Only show remove button if canManage */}
+        {canManage && (  // ADD THIS CONDITION
         <button
           onClick={() => onRemove(assignment.id)}
           disabled={isRemoving}
@@ -822,6 +835,7 @@ function OccupantSlot({ slotNumber, trainer, assignment, occupied, onRemove, isR
         >
           ×
         </button>
+        )}  {/* ADD THIS CLOSING BRACE */}
       </div>
     )
   }
