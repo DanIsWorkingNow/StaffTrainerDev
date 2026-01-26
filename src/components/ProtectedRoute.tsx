@@ -1,8 +1,7 @@
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import { useCurrentUserRole } from '~/hooks/useRBAC'
-
-type UserRole = 'ADMIN' | 'COORDINATOR' | 'TRAINER'
+import { type UserRole } from '~/middleware/rbac'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
