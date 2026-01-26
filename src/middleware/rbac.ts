@@ -1,8 +1,19 @@
 import { createServerFn } from '@tanstack/react-start'
 import { getSupabaseServerClient } from '~/utils/supabase'
 
-// Type definitions
-export type UserRole = 'ADMIN' | 'COORDINATOR' | 'TRAINER'
+// ============================================================================
+// TYPE DEFINITIONS
+// ============================================================================
+
+// UPDATED: Added 4 new specialized coordinator roles
+export type UserRole = 
+  | 'ADMIN' 
+  | 'COORDINATOR' 
+  | 'EVENT COORDINATOR'      // New: Events module admin
+  | 'PT COORDINATOR'         // New: Physical Training module admin
+  | 'RA COORDINATOR'         // New: Religious Activities module admin
+  | 'DORMITORY COORDINATOR'  // New: Dormitory module admin
+  | 'TRAINER'
 
 export type Permission = {
   resource: string
@@ -19,6 +30,10 @@ export type UserRoleData = {
   rank?: string
   permissions: Permission[]
 }
+
+// ============================================================================
+// SERVER-SIDE FUNCTIONS (Original functions - unchanged)
+// ============================================================================
 
 /**
  * Get current user's role and permissions
@@ -180,3 +195,225 @@ export const isTrainer = createServerFn({ method: 'GET' }).handler(
     return userData?.role === 'TRAINER' || false
   }
 )
+
+// ============================================================================
+// NEW: CLIENT-SIDE HELPER FUNCTIONS FOR UI RENDERING
+// These functions are used in components to show/hide UI elements
+// ============================================================================
+
+/**
+ * CRITICAL: Check if user can access dormitory module
+ * Only ADMIN, COORDINATOR, and DORMITORY COORDINATOR should have access
+ * EVENT, PT, and RA coordinators must NOT have access
+ */
+export function canAccessDormitoryClient(role: UserRole): boolean {
+  return ['ADMIN', 'COORDINATOR', 'DORMITORY COORDINATOR'].includes(role)
+}
+
+/**
+ * Check if user can access events module
+ * Available to: ADMIN, COORDINATOR, EVENT COORDINATOR
+ */
+export function canAccessEventsClient(role: UserRole): boolean {
+  return ['ADMIN', 'COORDINATOR', 'EVENT COORDINATOR'].includes(role)
+}
+
+/**
+ * Check if user can access physical training module
+ * Available to: ADMIN, COORDINATOR, PT COORDINATOR
+ */
+export function canAccessPTClient(role: UserRole): boolean {
+  return ['ADMIN', 'COORDINATOR', 'PT COORDINATOR'].includes(role)
+}
+
+/**
+ * Check if user can access religious activities module
+ * Available to: ADMIN, COORDINATOR, RA COORDINATOR
+ */
+export function canAccessReligiousClient(role: UserRole): boolean {
+  return ['ADMIN', 'COORDINATOR', 'RA COORDINATOR'].includes(role)
+}
+
+/**
+ * Generic function to check module access
+ * Used for dynamic role checking
+ */
+export function canManageModuleClient(role: UserRole, module: string): boolean {
+  switch (module) {
+    case 'events':
+      return canAccessEventsClient(role)
+    case 'pt':
+    case 'physical-training':
+      return canAccessPTClient(role)
+    case 'religious':
+    case 'religious-activity':
+      return canAccessReligiousClient(role)
+    case 'dormitory':
+      return canAccessDormitoryClient(role)
+    default:
+      return false
+  }
+}
+
+/**
+ * Check if user can access trainer overview
+ * Typically only ADMIN and COORDINATOR (not specialized coordinators)
+ */
+export function canAccessOverviewClient(role: UserRole): boolean {
+  return ['ADMIN', 'COORDINATOR'].includes(role)
+}
+
+// ============================================================================
+// NEW: SERVER-SIDE SECURITY FUNCTIONS FOR API PROTECTION
+// These functions are used in API routes to verify access
+// ============================================================================
+
+/**
+ * Server-side: Check if user can access dormitory module
+ * CRITICAL: This enforces dormitory access at the API level
+ */
+export const canAccessDormitory = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<boolean> => {
+    const userData = await getCurrentUserRole()
+    if (!userData) return false
+    return canAccessDormitoryClient(userData.role)
+  }
+)
+
+/**
+ * Server-side: Check if user can access events module
+ */
+export const canAccessEvents = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<boolean> => {
+    const userData = await getCurrentUserRole()
+    if (!userData) return false
+    return canAccessEventsClient(userData.role)
+  }
+)
+
+/**
+ * Server-side: Check if user can access PT module
+ */
+export const canAccessPT = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<boolean> => {
+    const userData = await getCurrentUserRole()
+    if (!userData) return false
+    return canAccessPTClient(userData.role)
+  }
+)
+
+/**
+ * Server-side: Check if user can access Religious Activities module
+ */
+export const canAccessReligious = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<boolean> => {
+    const userData = await getCurrentUserRole()
+    if (!userData) return false
+    return canAccessReligiousClient(userData.role)
+  }
+)
+
+/**
+ * Server-side: Check if user can access trainer overview
+ */
+export const canAccessOverview = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<boolean> => {
+    const userData = await getCurrentUserRole()
+    if (!userData) return false
+    return canAccessOverviewClient(userData.role)
+  }
+)
+
+/**
+ * Server-side: Generic module access check
+ */
+export const canManageModule = createServerFn({ method: 'GET' })
+  .inputValidator((module: string) => module)
+  .handler(async ({ data: module }): Promise<boolean> => {
+    const userData = await getCurrentUserRole()
+    if (!userData) return false
+    return canManageModuleClient(userData.role, module)
+  })
+
+// ============================================================================
+// NEW: SPECIALIZED COORDINATOR CHECK FUNCTIONS
+// ============================================================================
+
+/**
+ * Check if current user is EVENT COORDINATOR or above
+ */
+export const isEventCoordinator = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<boolean> => {
+    const userData = await getCurrentUserRole()
+    if (!userData) return false
+    return ['ADMIN', 'COORDINATOR', 'EVENT COORDINATOR'].includes(userData.role)
+  }
+)
+
+/**
+ * Check if current user is PT COORDINATOR or above
+ */
+export const isPTCoordinator = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<boolean> => {
+    const userData = await getCurrentUserRole()
+    if (!userData) return false
+    return ['ADMIN', 'COORDINATOR', 'PT COORDINATOR'].includes(userData.role)
+  }
+)
+
+/**
+ * Check if current user is RA COORDINATOR or above
+ */
+export const isRACoordinator = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<boolean> => {
+    const userData = await getCurrentUserRole()
+    if (!userData) return false
+    return ['ADMIN', 'COORDINATOR', 'RA COORDINATOR'].includes(userData.role)
+  }
+)
+
+/**
+ * Check if current user is DORMITORY COORDINATOR or above
+ */
+export const isDormitoryCoordinator = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<boolean> => {
+    const userData = await getCurrentUserRole()
+    if (!userData) return false
+    return ['ADMIN', 'COORDINATOR', 'DORMITORY COORDINATOR'].includes(userData.role)
+  }
+)
+
+// ============================================================================
+// EXPORTS SUMMARY
+// ============================================================================
+// Types: UserRole, Permission, UserRoleData
+//
+// Original Server Functions:
+// - getCurrentUserRole() - Get user role and permissions
+// - requireRole() - Require specific role (throws error)
+// - hasPermission() - Check specific permission
+// - requirePermission() - Require specific permission (throws error)
+// - isAdmin() - Check if ADMIN
+// - isCoordinatorOrAbove() - Check if COORDINATOR or ADMIN
+// - isTrainer() - Check if TRAINER
+//
+// New Client-Side Functions (for UI):
+// - canAccessDormitoryClient() - Check dormitory access
+// - canAccessEventsClient() - Check events access
+// - canAccessPTClient() - Check PT access
+// - canAccessReligiousClient() - Check religious access
+// - canManageModuleClient() - Generic module check
+// - canAccessOverviewClient() - Check overview access
+//
+// New Server Functions (for API):
+// - canAccessDormitory() - Server: Check dormitory access
+// - canAccessEvents() - Server: Check events access
+// - canAccessPT() - Server: Check PT access
+// - canAccessReligious() - Server: Check religious access
+// - canAccessOverview() - Server: Check overview access
+// - canManageModule() - Server: Generic module check
+// - isEventCoordinator() - Check if EVENT COORDINATOR
+// - isPTCoordinator() - Check if PT COORDINATOR
+// - isRACoordinator() - Check if RA COORDINATOR
+// - isDormitoryCoordinator() - Check if DORMITORY COORDINATOR
+// ============================================================================
