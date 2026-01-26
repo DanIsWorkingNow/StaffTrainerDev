@@ -3,6 +3,8 @@ import { createServerFn } from '@tanstack/react-start'
 import { getSupabaseServerClient } from '~/utils/supabase'
 import { useState } from 'react'
 
+//Workaround create trainer module
+
 // Server function to get all trainer overview data
 const getTrainerOverviewData = createServerFn({ method: 'GET' })
   .inputValidator((data: { trainerId?: number; month: number; year: number }) => data)

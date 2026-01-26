@@ -69,10 +69,6 @@ const getTrainerOverviewData = createServerFn({ method: 'GET' })
   })
 
 // Server function to create a new trainer
-// TEMPORARY WORKAROUND for createTrainer function
-// This adds more defensive checks to help identify the issue
-// Replace lines 71-123 in your index.tsx
-
 const createTrainer = createServerFn({ method: 'POST' })
   .inputValidator((data: {
     name: string
@@ -88,14 +84,6 @@ const createTrainer = createServerFn({ method: 'POST' })
     let userId = null
     let warning = null
 
-    console.log('🔍 Creating trainer with data:', { 
-      name: data.name, 
-      rank: data.rank, 
-      role_id: data.role_id,
-      status: data.status,
-      has_email: !!data.email 
-    })
-
     // Try to create auth user if email/password provided
     if (data.email && data.password && data.email.trim() !== '') {
       const supabaseAdmin = getSupabaseAdminClient()
@@ -107,52 +95,30 @@ const createTrainer = createServerFn({ method: 'POST' })
         })
 
         if (userError) {
-          console.error('❌ Auth user creation failed:', userError)
           return { error: `User creation failed: ${userError.message}` }
         }
         userId = userData.user?.id
-        console.log('✅ Auth user created:', userId)
       } else {
         warning = 'Trainer created without login access (Missing Server Key)'
       }
-    } else {
-      console.log('ℹ️ No email/password provided - creating trainer without auth')
     }
 
-    // Prepare insert data - explicitly set user_id to null if not provided
-    const insertData = {
-      name: data.name,
-      rank: data.rank,
-      role_id: data.role_id,
-      status: data.status,
-      user_id: userId || null,  // Explicitly set to null instead of omitting
-      is_active: true  // Explicitly set is_active
-    }
-
-    console.log('📝 Inserting trainer with data:', insertData)
-
-    // Insert the new trainer
     const { data: newTrainer, error } = await supabase
       .from('trainers')
-      .insert([insertData])
+      .insert([{
+        name: data.name,
+        rank: data.rank,
+        role_id: data.role_id,
+        status: data.status,
+        ...(userId ? { user_id: userId } : {})
+      }])
       .select()
       .single()
 
     if (error) {
-      console.error('❌ Trainer insert failed:', {
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint
-      })
-      
-      // Return more detailed error information
-      return { 
-        error: `Database error: ${error.message}\nCode: ${error.code}\nDetails: ${error.details || 'none'}\nHint: ${error.hint || 'none'}` 
-      }
+      return { error: error.message }
     }
 
-    console.log('✅ Trainer created successfully:', newTrainer.id)
     return { success: true, trainer: newTrainer, warning }
   })
 
