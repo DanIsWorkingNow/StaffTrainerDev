@@ -2,7 +2,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { getSupabaseServerClient } from '~/utils/supabase'
 import { getCurrentUserRole } from '~/middleware/rbac'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 
 // Server functions
 const getPhysicalTrainingData = createServerFn({ method: 'GET' }).handler(async () => {
@@ -65,7 +65,8 @@ const getPhysicalTrainingData = createServerFn({ method: 'GET' }).handler(async 
         activeTrainers: trainers?.length || 0,
         todaySessions: todayTrainingsFiltered.length,
         thisWeekSessions: thisWeekTrainingsFiltered.length,
-      }
+      },
+      user  // FIXED: Return user for RBAC checks
     }
   }
 
@@ -76,7 +77,8 @@ const getPhysicalTrainingData = createServerFn({ method: 'GET' }).handler(async 
       activeTrainers: trainers?.length || 0,
       todaySessions: todayTrainings.length,
       thisWeekSessions: thisWeekTrainings.length,
-    }
+    },
+    user  // FIXED: Return user for RBAC checks
   }
 })
 
@@ -125,12 +127,14 @@ export const Route = createFileRoute('/_authed/physical-training/')({
 })
 
 function PhysicalTrainingPage() {
-  const { trainers, trainingSessions, stats } = Route.useLoaderData()
+  const { trainers, trainingSessions, stats, user } = Route.useLoaderData()
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [view, setView] = useState<'week' | 'month' | 'trainer-schedule'>('month')
   const [selectedTrainer, setSelectedTrainer] = useState<string>('all')
+  // FIXED: RBAC - Only ADMIN, COORDINATOR, and PT COORDINATOR can create PT sessions
+  const canCreatePT = user?.role && ['ADMIN', 'COORDINATOR', 'PT COORDINATOR'].includes(user.role)
 
   // Get trainings for a specific date
   const getTrainingsForDate = (day: number, month?: number, year?: number) => {
@@ -177,6 +181,12 @@ function PhysicalTrainingPage() {
   }
 
   const handleDateClick = (day: number) => {
+    // FIXED: RBAC check - Only PT Coordinators can create
+    if (!canCreatePT) {
+      alert('Unauthorized: Only PT Coordinators and Admins can create physical training sessions')
+      return
+    }
+    
     const selected = new Date(currentDate.getFullYear(), currentDate.getMonth(), day)
     setSelectedDate(selected)
     setShowModal(true)
@@ -688,7 +698,7 @@ function TrainerScheduleView({
   )
 }
 
-// Assignment Modal Component
+// Assignment Modal Component with Enhanced Filtering
 function AssignmentModal({
   date,
   trainers,
@@ -708,8 +718,59 @@ function AssignmentModal({
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  // ENHANCED: Search and filter states
+  const [searchTerm, setSearchTerm] = useState('')
+  const [selectedRank, setSelectedRank] = useState<string>('all')
+  const [selectedDepartment, setSelectedDepartment] = useState<string>('all')
+  const [selectedSpecialization, setSelectedSpecialization] = useState<string>('all')
+
+  // Get unique values for filters
+  const { ranks, departments, specializations } = useMemo(() => {
+    const ranksSet = new Set<string>()
+    const departmentsSet = new Set<string>()
+    const specializationsSet = new Set<string>()
+
+    trainers.forEach((trainer: any) => {
+      if (trainer.rank) ranksSet.add(trainer.rank)
+      if (trainer.department) departmentsSet.add(trainer.department)
+      if (trainer.specialization) specializationsSet.add(trainer.specialization)
+    })
+
+    return {
+      ranks: Array.from(ranksSet).sort(),
+      departments: Array.from(departmentsSet).sort(),
+      specializations: Array.from(specializationsSet).sort(),
+    }
+  }, [trainers])
+
+  // Filtered trainers based on search and filters
+  const filteredTrainers = useMemo(() => {
+    return trainers.filter((trainer: any) => {
+      const matchesSearch = 
+        trainer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        trainer.ic_number?.toLowerCase().includes(searchTerm.toLowerCase())
+      
+      const matchesRank = selectedRank === 'all' || trainer.rank === selectedRank
+      const matchesDepartment = selectedDepartment === 'all' || trainer.department === selectedDepartment
+      const matchesSpecialization = selectedSpecialization === 'all' || trainer.specialization === selectedSpecialization
+
+      return matchesSearch && matchesRank && matchesDepartment && matchesSpecialization
+    })
+  }, [trainers, searchTerm, selectedRank, selectedDepartment, selectedSpecialization])
+
+  // Get selected trainers data
+  const selectedTrainers = useMemo(() => {
+    return trainers.filter((t: any) => formData.participants.includes(t.id))
+  }, [trainers, formData.participants])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    if (formData.participants.length === 0) {
+      alert('Please select at least one participating trainer')
+      return
+    }
+    
     setIsSubmitting(true)
 
     const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -736,9 +797,34 @@ function AssignmentModal({
     }))
   }
 
+  // Select all filtered trainers
+  const handleSelectAllFiltered = () => {
+    const allFilteredIds = filteredTrainers.map((t: any) => t.id)
+    setFormData(prev => ({
+      ...prev,
+      participants: [...new Set([...prev.participants, ...allFilteredIds])]
+    }))
+  }
+
+  // Deselect all trainers
+  const handleDeselectAll = () => {
+    setFormData(prev => ({
+      ...prev,
+      participants: []
+    }))
+  }
+
+  // Clear all filters
+  const handleClearFilters = () => {
+    setSearchTerm('')
+    setSelectedRank('all')
+    setSelectedDepartment('all')
+    setSelectedSpecialization('all')
+  }
+
   return (
     <>
-      {/* Modal Backdrop - separate from modal content */}
+      {/* Modal Backdrop */}
       <div
         className="fixed inset-0 bg-black bg-opacity-50 z-40"
         onClick={onClose}
@@ -746,9 +832,9 @@ function AssignmentModal({
 
       {/* Modal Content */}
       <div className="fixed inset-0 flex items-center justify-center p-4 z-50 pointer-events-none">
-        <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto pointer-events-auto">
+        <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto pointer-events-auto">
           {/* Modal Header */}
-          <div className="bg-green-50 border-b px-6 py-4 flex justify-between items-center sticky top-0">
+          <div className="bg-green-50 border-b px-6 py-4 flex justify-between items-center sticky top-0 z-10">
             <h3 className="text-xl font-semibold text-gray-900">
               Assign Physical Training
             </h3>
@@ -787,7 +873,7 @@ function AssignmentModal({
                 required
                 value={formData.training_type}
                 onChange={(e) => setFormData({ ...formData, training_type: e.target.value })}
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500"
               >
                 {TRAINING_TYPES.map(type => (
                   <option key={type} value={type}>{type}</option>
@@ -804,7 +890,7 @@ function AssignmentModal({
                 required
                 value={formData.time_slot}
                 onChange={(e) => setFormData({ ...formData, time_slot: e.target.value })}
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500"
               >
                 {TIME_SLOTS.map(slot => (
                   <option key={slot} value={slot}>{slot}</option>
@@ -812,7 +898,7 @@ function AssignmentModal({
               </select>
             </div>
 
-            {/* In Charge */}
+            {/* Trainer in Charge */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Trainer in Charge *
@@ -821,7 +907,7 @@ function AssignmentModal({
                 required
                 value={formData.in_charge}
                 onChange={(e) => setFormData({ ...formData, in_charge: e.target.value })}
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500"
               >
                 {trainers.map(trainer => (
                   <option key={trainer.id} value={trainer.name}>
@@ -831,36 +917,230 @@ function AssignmentModal({
               </select>
             </div>
 
-            {/* Participating Trainers */}
+            {/* Participating Trainers - ENHANCED */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Participating Trainers *
-              </label>
-              <div className="border rounded-lg p-4 max-h-60 overflow-y-auto space-y-2">
-                {trainers.map(trainer => (
-                  <label
-                    key={trainer.id}
-                    className="flex items-center space-x-3 p-2 hover:bg-gray-50 rounded cursor-pointer"
+              <div className="flex items-center justify-between mb-4">
+                <label className="block text-sm font-semibold text-gray-700">
+                  Participating Trainers *
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSelectAllFiltered}
+                    className="text-sm text-orange-600 hover:text-orange-800 font-medium"
                   >
-                    <input
-                      type="checkbox"
-                      checked={formData.participants.includes(trainer.id)}
-                      onChange={() => toggleParticipant(trainer.id)}
-                      className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                    />
-                    <span className="text-sm">
-                      <span className="font-medium">{trainer.rank}</span> {trainer.name}
-                    </span>
-                  </label>
-                ))}
+                    Select All Filtered
+                  </button>
+                  <span className="text-gray-300">|</span>
+                  <button
+                    type="button"
+                    onClick={handleDeselectAll}
+                    className="text-sm text-orange-600 hover:text-orange-800 font-medium"
+                  >
+                    Deselect All
+                  </button>
+                </div>
               </div>
-              <p className="text-sm text-gray-600 mt-2">
-                Selected: {formData.participants.length} trainer(s)
-              </p>
+
+              {/* Search and Filters - NEW */}
+              <div className="bg-gray-50 border rounded-lg p-4 mb-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold text-gray-700">Search & Filter Trainers</h4>
+                  <button
+                    type="button"
+                    onClick={handleClearFilters}
+                    className="text-xs text-gray-600 hover:text-gray-800 font-medium"
+                  >
+                    Clear Filters
+                  </button>
+                </div>
+
+                {/* Search Bar */}
+                <div>
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search by name or IC number..."
+                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                  />
+                </div>
+
+                {/* Filter Dropdowns */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {/* Rank Filter */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Rank</label>
+                    <select
+                      value={selectedRank}
+                      onChange={(e) => setSelectedRank(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-500"
+                    >
+                      <option value="all">All Ranks</option>
+                      {ranks.map(rank => (
+                        <option key={rank} value={rank}>{rank}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Department Filter */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Department</label>
+                    <select
+                      value={selectedDepartment}
+                      onChange={(e) => setSelectedDepartment(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-500"
+                    >
+                      <option value="all">All Departments</option>
+                      {departments.map(dept => (
+                        <option key={dept} value={dept}>{dept}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Specialization Filter */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Specialization</label>
+                    <select
+                      value={selectedSpecialization}
+                      onChange={(e) => setSelectedSpecialization(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-500"
+                    >
+                      <option value="all">All Specializations</option>
+                      {specializations.map(spec => (
+                        <option key={spec} value={spec}>{spec}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Filter Summary */}
+                <div className="flex items-center justify-between text-xs text-gray-600 pt-2 border-t">
+                  <span>
+                    Showing {filteredTrainers.length} of {trainers.length} trainers
+                  </span>
+                  {(searchTerm || selectedRank !== 'all' || selectedDepartment !== 'all' || selectedSpecialization !== 'all') && (
+                    <span className="text-orange-600 font-medium">
+                      {filteredTrainers.length === 0 ? 'No matches found' : 'Filters active'}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Selected Trainers Summary */}
+              {selectedTrainers.length > 0 && (
+                <div className="mb-4 p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center space-x-2">
+                      <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                      </svg>
+                      <h3 className="font-semibold text-orange-900">
+                        Selected Trainers ({selectedTrainers.length})
+                      </h3>
+                    </div>
+                  </div>
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {selectedTrainers.map((trainer: any) => (
+                      <div
+                        key={trainer.id}
+                        className="flex items-center justify-between bg-white px-3 py-2 rounded border border-orange-200"
+                      >
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
+                            <span className="text-sm font-semibold text-orange-700">
+                              {trainer.name.charAt(0)}
+                            </span>
+                          </div>
+                          <div>
+                            <p className="font-medium text-sm text-gray-900">
+                              {trainer.name}
+                            </p>
+                            <p className="text-xs text-gray-600">
+                              {trainer.rank} • {trainer.department || 'No department'}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => toggleParticipant(trainer.id)}
+                          className="text-red-600 hover:text-red-800 text-sm font-medium"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Trainer Selection Grid */}
+              <div className="border rounded-lg p-4 bg-gray-50">
+                <p className="text-sm text-gray-600 mb-3">
+                  Select trainers who will participate in this training
+                  {formData.participants.length === 0 && ' (none selected)'}
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto">
+                  {filteredTrainers.map((trainer: any) => (
+                    <label
+                      key={trainer.id}
+                      className={`flex items-center space-x-3 p-3 rounded-lg border-2 cursor-pointer transition ${formData.participants.includes(trainer.id)
+                        ? 'border-orange-500 bg-orange-50'
+                        : 'border-gray-200 bg-white hover:border-gray-300'
+                        }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={formData.participants.includes(trainer.id)}
+                        onChange={() => toggleParticipant(trainer.id)}
+                        className="w-5 h-5 text-orange-600 rounded focus:ring-orange-500"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm text-gray-900 truncate">
+                          {trainer.name}
+                        </p>
+                        <p className="text-xs text-gray-600 truncate">
+                          {trainer.rank}
+                          {trainer.department && ` • ${trainer.department}`}
+                        </p>
+                        {trainer.specialization && (
+                          <p className="text-xs text-orange-600 truncate mt-1">
+                            {trainer.specialization}
+                          </p>
+                        )}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+
+                {filteredTrainers.length === 0 && (
+                  <div className="text-center py-8">
+                    <svg className="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <p className="text-sm text-gray-500 font-medium">No trainers found</p>
+                    <p className="text-xs text-gray-400 mt-1">Try adjusting your search or filters</p>
+                  </div>
+                )}
+
+                {trainers.length === 0 && (
+                  <p className="text-sm text-gray-500 text-center py-4">
+                    No active trainers available
+                  </p>
+                )}
+              </div>
+
+              {/* Selection Validation Message */}
+              {formData.participants.length === 0 && (
+                <p className="text-xs text-red-600 mt-2">
+                  * At least one participating trainer is required
+                </p>
+              )}
             </div>
 
             {/* Form Actions */}
-            <div className="flex justify-end space-x-3 pt-4">
+            <div className="bg-gray-50 px-6 py-4 -mx-6 -mb-6 flex justify-end space-x-3 rounded-b-lg sticky bottom-0">
               <button
                 type="button"
                 onClick={onClose}
@@ -871,9 +1151,19 @@ function AssignmentModal({
               <button
                 type="submit"
                 disabled={isSubmitting || formData.participants.length === 0}
-                className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-6 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
               >
-                {isSubmitting ? 'Assigning...' : 'Assign Training'}
+                {isSubmitting ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <span>Assigning...</span>
+                  </>
+                ) : (
+                  <span>Assign Training</span>
+                )}
               </button>
             </div>
           </form>
