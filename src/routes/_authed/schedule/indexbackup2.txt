@@ -1,46 +1,10 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { getSupabaseServerClient } from '~/utils/supabase'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 
-// NEW: Server function to fetch schedule data for a specific month
-const getScheduleDataForMonth = createServerFn({ method: 'POST' })
-  .inputValidator((data: { year: number; month: number }) => data)
-  .handler(async ({ data }) => {
-    const supabase = getSupabaseServerClient()
-
-    const { year, month } = data
-    const firstDay = new Date(year, month, 1)
-    const lastDay = new Date(year, month + 1, 0)
-
-    const firstDayStr = firstDay.toISOString().split('T')[0]
-    const lastDayStr = lastDay.toISOString().split('T')[0]
-
-    // Fetch events for the specified month
-    const { data: events } = await supabase
-      .from('events')
-      .select('*')
-      .or(`start_date.lte.${lastDayStr},end_date.gte.${firstDayStr}`)
-      .order('start_date', { ascending: true })
-
-    // Fetch schedules for the specified month
-    const { data: schedules } = await supabase
-      .from('schedules')
-      .select(`
-        *,
-        trainer:trainers(id, name, rank, specialization)
-      `)
-      .gte('date', firstDayStr)
-      .lte('date', lastDayStr)
-      .order('date', { ascending: true })
-
-    return {
-      events: events || [],
-      schedules: schedules || [],
-    }
-  })
 // Server function to fetch schedule data
-const getInitialScheduleData = createServerFn({ method: 'GET' }).handler(async () => {
+const getScheduleData = createServerFn({ method: 'GET' }).handler(async () => {
   const supabase = getSupabaseServerClient()
 
   const currentDate = new Date()
@@ -88,7 +52,7 @@ const getInitialScheduleData = createServerFn({ method: 'GET' }).handler(async (
     currentTrainer = trainerData
   }
 
- // Get quick stats
+  // Get quick stats
   const todayStr = currentDate.toISOString().split('T')[0]
 
   // Count today's schedules with status not 'cancelled'
@@ -96,24 +60,8 @@ const getInitialScheduleData = createServerFn({ method: 'GET' }).handler(async (
     s.date === todayStr && s.status !== 'cancelled'
   ) || []
 
-  // FIXED: Calculate current week properly
-  const startOfWeek = new Date(currentDate)
-  const day = startOfWeek.getDay()
-  const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1) // Monday as start
-  startOfWeek.setDate(diff)
-
-  const endOfWeek = new Date(startOfWeek)
-  endOfWeek.setDate(startOfWeek.getDate() + 6) // Sunday as end
-
-  const startOfWeekStr = startOfWeek.toISOString().split('T')[0]
-  const endOfWeekStr = endOfWeek.toISOString().split('T')[0]
-
-  // Count THIS WEEK's schedules only
-  const weekSchedules = schedules?.filter(s => 
-    s.date >= startOfWeekStr && 
-    s.date <= endOfWeekStr && 
-    s.status !== 'cancelled'
-  ) || []
+  // Count this week's schedules
+  const weekSchedules = schedules?.filter(s => s.status !== 'cancelled') || []
 
   return {
     events: events || [],
@@ -129,22 +77,14 @@ const getInitialScheduleData = createServerFn({ method: 'GET' }).handler(async (
 })
 
 export const Route = createFileRoute('/_authed/schedule/')({
-  loader: async () => await getInitialScheduleData(),
+  loader: async () => await getScheduleData(),
   component: SchedulePage,
 })
 
 function SchedulePage() {
-  const initialData = Route.useLoaderData()
+  const { events, trainers, schedules, currentTrainer, stats } = Route.useLoaderData()
   const [currentDate, setCurrentDate] = useState(new Date())
   const [view, setView] = useState<'week' | 'month' | 'trainer-schedule' | 'my-schedule'>('week')
-  
-  // FIXED: State for dynamic data loading
-  const [events, setEvents] = useState(initialData.events)
-  const [schedules, setSchedules] = useState(initialData.schedules)
-  const [isLoading, setIsLoading] = useState(false)
-  
-  // Static data that doesn't change with month navigation
-  const { trainers, currentTrainer, stats } = initialData
   
   // Filter states for Active Trainers section
   const [trainerSearchQuery, setTrainerSearchQuery] = useState('')
@@ -157,35 +97,6 @@ function SchedulePage() {
   const [scheduleFilterRank, setScheduleFilterRank] = useState('')
   const [scheduleFilterSpecialization, setScheduleFilterSpecialization] = useState('')
   const [scheduleFilterDepartment, setScheduleFilterDepartment] = useState('')
-
-  // FIXED: Refetch data when month changes for month-based views
-  useEffect(() => {
-    const fetchMonthData = async () => {
-      // Only fetch if in month-based views
-      if (view !== 'trainer-schedule' && view !== 'my-schedule') {
-        return
-      }
-
-      setIsLoading(true)
-      try {
-        const result = await getScheduleDataForMonth({
-          data: {
-            year: currentDate.getFullYear(),
-            month: currentDate.getMonth(),
-          }
-        })
-        
-        setEvents(result.events)
-        setSchedules(result.schedules)
-      } catch (error) {
-        console.error('Error fetching month data:', error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    fetchMonthData()
-  }, [currentDate, view])
 
   // Filtered trainers for Active Trainers section
   const filteredActiveTrainers = trainers.filter((t: any) => {
@@ -270,8 +181,7 @@ function SchedulePage() {
                 }
                 setCurrentDate(newDate)
               }}
-              className="p-2 hover:bg-gray-100 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={isLoading}
+              className="p-2 hover:bg-gray-100 rounded-lg transition"
             >
               ◀ Previous
             </button>
@@ -303,8 +213,7 @@ function SchedulePage() {
                 }
                 setCurrentDate(newDate)
               }}
-              className="p-2 hover:bg-gray-100 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={isLoading}
+              className="p-2 hover:bg-gray-100 rounded-lg transition"
             >
               Next ▶
             </button>
@@ -346,18 +255,6 @@ function SchedulePage() {
         </div>
       </div>
 
-  {/* Loading Indicator */}
-      {isLoading && (
-        <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg">
-          <div className="flex items-center space-x-2">
-            <svg className="animate-spin h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-            </svg>
-            <span className="font-medium">Loading schedule data...</span>
-          </div>
-        </div>
-      )}
       {/* Calendar Grid */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
         {view === 'week' ? (
