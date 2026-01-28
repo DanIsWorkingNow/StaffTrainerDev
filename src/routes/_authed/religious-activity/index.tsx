@@ -1,7 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import { getSupabaseServerClient } from '~/utils/supabase'
 import { getCurrentUserRole } from '~/middleware/rbac'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 
 // Server functions
@@ -137,6 +137,10 @@ export const Route = createFileRoute('/_authed/religious-activity/')({
 
 function ReligiousActivityPage() {
   const { activities, trainers, currentTrainer, stats } = Route.useLoaderData()
+  
+  // RBAC: Check if user can create religious activities
+  const canCreateRA = currentTrainer?.roles?.name && 
+    ['ADMIN', 'COORDINATOR', 'RA COORDINATOR'].includes(currentTrainer.roles.name)
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [showModal, setShowModal] = useState(false)
@@ -235,10 +239,16 @@ function ReligiousActivityPage() {
   }
 
   const handleDateClick = (day: number) => {
-    const selected = new Date(currentDate.getFullYear(), currentDate.getMonth(), day)
-    setSelectedDate(selected)
-    setShowModal(true)
+  // RBAC Protection: Only authorized roles can create activities
+  if (!canCreateRA) {
+    alert('Unauthorized: Only RA Coordinators and Admins can create religious activities')
+    return
   }
+  
+  const selected = new Date(currentDate.getFullYear(), currentDate.getMonth(), day)
+  setSelectedDate(selected)
+  setShowModal(true)
+}
 
   // Get days in current month
   const getDaysInMonth = () => {
@@ -357,13 +367,16 @@ function ReligiousActivityPage() {
             >
               Month
             </button>
-            <button
-              onClick={() => setView('participant-schedule')}
-              className={`px-4 py-2 rounded transition ${view === 'participant-schedule' ? 'bg-teal-600 text-white' : 'bg-gray-200 hover:bg-gray-300'
-                }`}
-            >
-              Participant Schedule
-            </button>
+            {/* Show Participant Schedule only for authorized roles */}
+{canCreateRA && (
+  <button
+    onClick={() => setView('participant-schedule')}
+    className={`px-4 py-2 rounded transition ${view === 'participant-schedule' ? 'bg-teal-600 text-white' : 'bg-gray-200 hover:bg-gray-300'
+      }`}
+  >
+    Participant Schedule
+  </button>
+)}
             {/* Show My Schedule tab only if user is a trainer */}
             {currentTrainer && (
               <button
@@ -404,8 +417,8 @@ function ReligiousActivityPage() {
         />
       )}
 
-      {view === 'participant-schedule' && (
-        <>
+      {view === 'participant-schedule' && canCreateRA && (
+  <>
           {/* Filters for Participant Schedule */}
           <div className="bg-white rounded-lg shadow">
             <div className="bg-gray-50 p-6 border-b">

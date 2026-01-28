@@ -8,6 +8,19 @@ const getDashboardData = createServerFn({ method: 'GET' }).handler(async () => {
 
   const today = new Date().toISOString().split('T')[0]
 
+  // FIXED: Get current user and trainer info
+  const { data: { user } } = await supabase.auth.getUser()
+  let currentTrainer = null
+  
+  if (user) {
+    const { data: trainerData } = await supabase
+      .from('trainers')
+      .select('*, roles(name)')
+      .eq('user_id', user.id)
+      .single()
+    currentTrainer = trainerData
+  }
+
   // Fetch all necessary data
   const { data: trainers } = await supabase
     .from('trainers')
@@ -40,7 +53,136 @@ const getDashboardData = createServerFn({ method: 'GET' }).handler(async () => {
     .from('dormitory_assignments')
     .select('*')
 
-  // Calculate statistics
+  // FIXED: Role-based filtering logic
+  const role = currentTrainer?.roles?.name
+  const trainerId = currentTrainer?.id
+  const trainerName = currentTrainer?.name
+
+  // Initialize with all data (for ADMIN and COORDINATOR)
+  let filteredPhysical = physicalTraining || []
+  let filteredReligious = religiousActivities || []
+  let filteredEvents = upcomingEvents || []
+  
+  // Track which stats need filtering vs total
+  let ptCountIsFiltered = false
+  let raCountIsFiltered = false
+  let eventsCountIsFiltered = false
+
+  // Helper function to filter by assignment (in_charge OR participants)
+  const filterByAssignment = (items: any[], checkName: boolean = true) => {
+    if (!trainerId || !items) return []
+    
+    return items.filter((item: any) => {
+      const isInCharge = checkName && item.in_charge === trainerName
+      const isParticipant = Array.isArray(item.participants) && item.participants.includes(trainerId)
+      return isInCharge || isParticipant
+    })
+  }
+
+  // Helper function to filter events by schedules
+  const filterEventsBySchedules = async (events: any[]) => {
+    if (!trainerId || !events) return []
+    
+    const { data: trainerSchedules } = await supabase
+      .from('schedules')
+      .select('event_id')
+      .eq('trainer_id', trainerId)
+      .gte('date', today)
+
+    const assignedEventIds = new Set(trainerSchedules?.map((s: any) => s.event_id).filter(Boolean))
+    return events.filter((event: any) => assignedEventIds.has(event.id))
+  }
+
+  // Apply role-specific filtering
+  if (role && trainerId) {
+    switch (role) {
+      case 'PT COORDINATOR':
+        // PT Coordinator sees ALL PT, but filtered Events and RA
+        filteredPhysical = physicalTraining || []  // No filtering for PT
+        filteredReligious = filterByAssignment(religiousActivities || [])  // Filter RA
+        filteredEvents = await filterEventsBySchedules(upcomingEvents || [])  // Filter Events
+        
+        // Stats: PT shows total, others show filtered
+        ptCountIsFiltered = false
+        raCountIsFiltered = true
+        eventsCountIsFiltered = true
+        break
+
+      case 'EVENT COORDINATOR':
+        // Event Coordinator sees ALL Events, but filtered PT and RA
+        filteredPhysical = filterByAssignment(physicalTraining || [])  // Filter PT
+        filteredReligious = filterByAssignment(religiousActivities || [])  // Filter RA
+        filteredEvents = upcomingEvents || []  // No filtering for Events
+        
+        // Stats: Events shows total, others show filtered
+        ptCountIsFiltered = true
+        raCountIsFiltered = true
+        eventsCountIsFiltered = false
+        break
+
+      case 'RA COORDINATOR':
+        // RA Coordinator sees ALL RA, but filtered PT and Events
+        filteredPhysical = filterByAssignment(physicalTraining || [])  // Filter PT
+        filteredReligious = religiousActivities || []  // No filtering for RA
+        filteredEvents = await filterEventsBySchedules(upcomingEvents || [])  // Filter Events
+        
+        // Stats: RA shows total, others show filtered
+        ptCountIsFiltered = true
+        raCountIsFiltered = false
+        eventsCountIsFiltered = true
+        break
+
+      case 'DORMITORY COORDINATOR':
+        // Dormitory Coordinator is filtered for ALL activities
+        filteredPhysical = filterByAssignment(physicalTraining || [])
+        filteredReligious = filterByAssignment(religiousActivities || [])
+        filteredEvents = await filterEventsBySchedules(upcomingEvents || [])
+        
+        // All stats show filtered counts
+        ptCountIsFiltered = true
+        raCountIsFiltered = true
+        eventsCountIsFiltered = true
+        break
+
+      case 'TRAINER':
+        // Trainers are filtered for ALL activities
+        filteredPhysical = filterByAssignment(physicalTraining || [])
+        filteredReligious = filterByAssignment(religiousActivities || [])
+        filteredEvents = await filterEventsBySchedules(upcomingEvents || [])
+        
+        // All stats show filtered counts
+        ptCountIsFiltered = true
+        raCountIsFiltered = true
+        eventsCountIsFiltered = true
+        break
+
+      case 'ADMIN':
+      case 'COORDINATOR':
+        // ADMIN and COORDINATOR see everything (no filtering)
+        filteredPhysical = physicalTraining || []
+        filteredReligious = religiousActivities || []
+        filteredEvents = upcomingEvents || []
+        
+        // All stats show total counts
+        ptCountIsFiltered = false
+        raCountIsFiltered = false
+        eventsCountIsFiltered = false
+        break
+
+      default:
+        // Unknown role - apply full filtering for safety
+        filteredPhysical = filterByAssignment(physicalTraining || [])
+        filteredReligious = filterByAssignment(religiousActivities || [])
+        filteredEvents = await filterEventsBySchedules(upcomingEvents || [])
+        
+        ptCountIsFiltered = true
+        raCountIsFiltered = true
+        eventsCountIsFiltered = true
+        break
+    }
+  }
+
+  // Calculate statistics with appropriate counts
   const totalCapacity = 50 * 4 // 50 rooms, 4 people each
   const occupancyRate = Math.round((dormitoryAssignments?.length || 0) / totalCapacity * 100)
 
@@ -48,17 +190,19 @@ const getDashboardData = createServerFn({ method: 'GET' }).handler(async () => {
     stats: {
       activeTrainers: trainers?.length || 0,
       todaySessions: todaySessions?.length || 0,
-      physicalTraining: physicalTraining?.length || 0,
-      religiousActivities: religiousActivities?.length || 0,
-      upcomingEvents: upcomingEvents?.length || 0,
+      // Use filtered count or total based on role
+      physicalTraining: ptCountIsFiltered ? filteredPhysical.length : (physicalTraining?.length || 0),
+      religiousActivities: raCountIsFiltered ? filteredReligious.length : (religiousActivities?.length || 0),
+      upcomingEvents: eventsCountIsFiltered ? filteredEvents.length : (upcomingEvents?.length || 0),
       occupancyRate,
     },
-    upcomingEvents: upcomingEvents || [],
+    upcomingEvents: filteredEvents,  // Always return filtered list
     todayActivities: {
       sessions: todaySessions || [],
-      physical: physicalTraining || [],
-      religious: religiousActivities || [],
-    }
+      physical: filteredPhysical,  // Always return filtered list
+      religious: filteredReligious,  // Always return filtered list
+    },
+    currentTrainer  // For name display
   }
 })
 
@@ -107,11 +251,14 @@ function getQuickActionGridClass(role?: string): string {
 // ===== MAIN COMPONENT =====
 
 function DashboardPage() {
-  const { stats, upcomingEvents, todayActivities } = Route.useLoaderData()
+  const { stats, upcomingEvents, todayActivities, currentTrainer } = Route.useLoaderData()
   const { user } = Route.useRouteContext()
 
   // Check if user has management access
   const isManagement = canAccessManagement(user?.role)
+
+  // FIXED: Get display name - prefer trainer name over email
+  const displayName = currentTrainer?.name || user?.email || 'User'
 
   return (
     <div className="space-y-6">
@@ -126,7 +273,7 @@ function DashboardPage() {
           <div>
             <h1 className="text-4xl font-bold mb-2">ABPM Trainer System</h1>
             <p className="text-blue-100 text-lg">
-              Welcome back, {user?.email}!
+              Welcome back, {displayName}!
             </p>
             <p className="text-blue-200 text-sm mt-1">
               {new Date().toLocaleDateString('en-US', {
