@@ -146,6 +146,10 @@ function SchedulePage() {
   // Static data that doesn't change with month navigation
   const { trainers, currentTrainer, stats } = initialData
   
+// RBAC: Check if user can access Trainer Schedule (only ADMIN and COORDINATOR)
+const canAccessTrainerSchedule = currentTrainer?.roles?.name && 
+  ['ADMIN', 'COORDINATOR'].includes(currentTrainer.roles.name)
+  
   // Filter states for Active Trainers section
   const [trainerSearchQuery, setTrainerSearchQuery] = useState('')
   const [trainerFilterRank, setTrainerFilterRank] = useState('')
@@ -325,13 +329,16 @@ function SchedulePage() {
             >
               Month
             </button>
-            <button
-              onClick={() => setView('trainer-schedule')}
-              className={`px-4 py-2 rounded ${view === 'trainer-schedule' ? 'bg-blue-600 text-white' : 'bg-gray-200'
-                }`}
-            >
-              Trainer Schedule
-            </button>
+            {/* Show Trainer Schedule only for ADMIN and COORDINATOR */}
+{canAccessTrainerSchedule && (
+  <button
+    onClick={() => setView('trainer-schedule')}
+    className={`px-4 py-2 rounded ${view === 'trainer-schedule' ? 'bg-blue-600 text-white' : 'bg-gray-200'
+      }`}
+  >
+    Trainer Schedule
+  </button>
+)}
             {/* Show My Schedule tab only if user is a trainer */}
             {currentTrainer && (
               <button
@@ -371,9 +378,9 @@ function SchedulePage() {
             events={events}
             currentDate={currentDate}
           />
-        ) : (
-          <>
-            {/* Filters for Trainer Schedule Grid */}
+        ) : canAccessTrainerSchedule ? (
+  <>
+    {/* Filters for Trainer Schedule Grid */}
             <div className="bg-gray-50 p-6 border-b">
               <h2 className="text-xl font-bold text-gray-900 mb-4">🔍 Filter Trainers</h2>
               
@@ -499,6 +506,13 @@ function SchedulePage() {
               currentDate={currentDate}
             />
           </>
+        ) : (
+          <div className="p-8 text-center">
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 inline-block">
+              <p className="text-yellow-800 font-semibold">⚠️ Unauthorized Access</p>
+              <p className="text-yellow-700 mt-2">Only Administrators and Coordinators can access the Trainer Schedule view.</p>
+            </div>
+          </div>
         )}
       </div>
 
