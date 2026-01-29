@@ -79,19 +79,73 @@ const getDashboardData = createServerFn({ method: 'GET' }).handler(async () => {
     })
   }
 
-  // Helper function to filter events by schedules
-  const filterEventsBySchedules = async (events: any[]) => {
-    if (!trainerId || !events) return []
-    
-    const { data: trainerSchedules } = await supabase
-      .from('schedules')
-      .select('event_id')
-      .eq('trainer_id', trainerId)
-      .gte('date', today)
-
-    const assignedEventIds = new Set(trainerSchedules?.map((s: any) => s.event_id).filter(Boolean))
-    return events.filter((event: any) => assignedEventIds.has(event.id))
+ // Helper function to filter events by schedules
+const filterEventsBySchedules = async (events: any[]) => {
+  console.log('🔍 filterEventsBySchedules called:', {
+    trainerId,
+    trainerName,
+    eventsCount: events?.length || 0,
+    events: events?.map(e => ({ id: e.id, name: e.name }))
+  })
+  
+  if (!trainerId || !events || events.length === 0) {
+    console.warn('⚠️ Early return - missing trainerId or events')
+    return []
   }
+  
+  // Fetch schedules for this trainer (no event_id, use notes instead)
+  const { data: trainerSchedules, error } = await supabase
+    .from('schedules')
+    .select('id, date, notes, status')
+    .eq('trainer_id', trainerId)
+  
+  console.log('📅 Schedule query result:', {
+    schedulesCount: trainerSchedules?.length || 0,
+    schedules: trainerSchedules?.slice(0, 5), // Show first 5 for debugging
+    error: error
+  })
+  
+  if (error) {
+    console.error('❌ Error fetching schedules:', error)
+    return []
+  }
+  
+  if (!trainerSchedules || trainerSchedules.length === 0) {
+    console.warn('⚠️ No schedules found for trainer')
+    return []
+  }
+  
+  // Extract event names from notes field
+  // Notes format: "Assigned to: Event Name"
+  const assignedEventNames = new Set<string>()
+  
+  trainerSchedules.forEach((schedule: any) => {
+    if (schedule.notes && schedule.notes.includes('Assigned to:')) {
+      // Extract event name from "Assigned to: Event Name"
+      const eventName = schedule.notes.replace('Assigned to:', '').trim()
+      if (eventName) {
+        assignedEventNames.add(eventName)
+      }
+    }
+  })
+  
+  console.log('🎯 Assigned Event Names from schedules:', Array.from(assignedEventNames))
+  
+  // Filter events by matching names
+  const filteredEvents = events.filter((event: any) => {
+    const isAssigned = assignedEventNames.has(event.name)
+    console.log(`  Event ${event.id} (${event.name}): ${isAssigned ? '✅ ASSIGNED' : '❌ NOT ASSIGNED'}`)
+    return isAssigned
+  })
+  
+  console.log('✅ Filtered events result:', {
+    totalEvents: events.length,
+    assignedEvents: filteredEvents.length,
+    events: filteredEvents.map(e => ({ id: e.id, name: e.name }))
+  })
+  
+  return filteredEvents
+}
 
   // Apply role-specific filtering
   if (role && trainerId) {
