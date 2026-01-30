@@ -368,9 +368,9 @@ const canAccessTrainerSchedule = currentTrainer?.roles?.name &&
       {/* Calendar Grid */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
         {view === 'week' ? (
-          <WeeklyCalendar schedules={schedules} events={events} currentDate={currentDate} />
+          <WeeklyCalendar schedules={schedules} events={events} currentDate={currentDate} currentTrainer={currentTrainer} />
         ) : view === 'month' ? (
-          <MonthlyCalendar schedules={schedules} events={events} currentDate={currentDate} />
+          <MonthlyCalendar schedules={schedules} events={events} currentDate={currentDate} currentTrainer={currentTrainer} />
         ) : view === 'my-schedule' ? (
           <MyScheduleGrid
             currentTrainer={currentTrainer}
@@ -720,6 +720,64 @@ function StatCard({ title, value, icon, color }: {
   )
 }
 
+// Helper function to filter events based on user role and assignments
+const filterEventsForUser = (
+  events: any[],
+  schedules: any[],
+  currentTrainer: any | null,
+  date: Date
+) => {
+  // If no trainer or no role, show no events
+  if (!currentTrainer || !currentTrainer.roles?.name) {
+    return []
+  }
+
+  const userRole = currentTrainer.roles.name
+
+  // ADMIN and COORDINATOR can see all events
+  if (['ADMIN', 'COORDINATOR', 'EVENT COORDINATOR'].includes(userRole)) {
+    return events
+  }
+
+  // For TRAINER role, filter to show only assigned events
+  if (userRole === 'TRAINER') {
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    
+    // Get schedule for this trainer on this date
+    const trainerSchedule = schedules.find(
+      s => s.trainer_id === currentTrainer.id && s.date === dateStr
+    )
+
+    if (!trainerSchedule) {
+      return []
+    }
+
+    // Helper to extract event name from notes
+    const extractEventName = (notes: string | null): string | null => {
+      if (!notes) return null
+      if (notes.includes('Assigned to:')) {
+        return notes.replace('Assigned to:', '').trim()
+      }
+      return null
+    }
+
+    // Filter events to show only assigned ones
+    return events.filter(event => {
+      const notesEventName = extractEventName(trainerSchedule.notes)
+      
+      // Exact match with event name (case-insensitive)
+      if (notesEventName && notesEventName.toLowerCase() === event.name.toLowerCase()) {
+        return true
+      }
+      
+      return false
+    })
+  }
+
+  // Default: show no events for unknown roles
+  return []
+}
+
 // My Schedule Grid Component - Shows only the current user's schedule
 function MyScheduleGrid({
   currentTrainer,
@@ -889,13 +947,36 @@ function MyScheduleGrid({
             const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
             const isToday = dateStr === todayStr
 
+           // Helper function to extract event name from notes
+            const extractEventNameFromNotes = (notes: string | null): string | null => {
+              if (!notes) return null
+              
+              // Notes format: "Assigned to: Event Name"
+              if (notes.includes('Assigned to:')) {
+                return notes.replace('Assigned to:', '').trim()
+              }
+              
+              return null
+            }
+
             // Filter events to only show assigned ones
             const assignedEvents = dayEvents.filter(event => {
-              const eventName = event.name.toLowerCase()
-              const noteMatch = schedule?.notes?.toLowerCase().includes(eventName)
-              const isScheduledDuringEvent = schedule?.status === 'scheduled' && isEventOnDate(event, date)
-              return noteMatch || isScheduledDuringEvent
+              if (!schedule) return false
+              
+              // Extract event name from schedule notes
+              const notesEventName = extractEventNameFromNotes(schedule.notes)
+              
+              // Exact match with event name (case-insensitive)
+              if (notesEventName && notesEventName.toLowerCase() === event.name.toLowerCase()) {
+                return true
+              }
+              
+              // Fallback: check if schedule exists during event period
+              const isScheduledDuringEvent = schedule.status === 'scheduled' && isEventOnDate(event, date)
+              
+              return isScheduledDuringEvent
             })
+
 
             return (
               <div
@@ -1181,10 +1262,16 @@ function TrainerScheduleGrid({
 }
 
 // Weekly Calendar View
-function WeeklyCalendar({ schedules, events, currentDate }: {
+function WeeklyCalendar({ 
+  schedules, 
+  events, 
+  currentDate,
+  currentTrainer  // ADD THIS PARAMETER
+}: {
   schedules: any[];
   events: any[];
   currentDate: Date;
+  currentTrainer: any | null;  // ADD THIS TYPE
 }) {
   const navigate = useNavigate()
   const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -1212,7 +1299,10 @@ function WeeklyCalendar({ schedules, events, currentDate }: {
           const date = weekDates[idx]
           const dateStr = date.toISOString().split('T')[0]
           const daySchedules = schedules.filter(s => s.date === dateStr)
-          const dayEvents = events.filter(e => isEventOnDate(e, date))
+          
+          // 🔥 NEW: Filter events based on user role
+          const allDayEvents = events.filter(e => isEventOnDate(e, date))
+          const dayEvents = filterEventsForUser(allDayEvents, schedules, currentTrainer, date)
 
           return (
             <div key={day} className="text-center">
@@ -1224,9 +1314,15 @@ function WeeklyCalendar({ schedules, events, currentDate }: {
                 {/* Show Events with Trainer Count */}
                 {dayEvents.map(event => {
                   // Count trainers assigned to this event
-                  const eventTrainerCount = daySchedules.filter(s =>
-                    s.notes?.includes(event.name)
-                  ).length;
+                  const eventTrainerCount = daySchedules.filter(s => {
+                    if (!s || !s.notes || !event || !event.name) return false
+                    
+                    // Extract event name from notes
+                    const notesEventName = s.notes.replace('Assigned to:', '').trim()
+                    
+                    // Exact match (case-insensitive)
+                    return notesEventName.toLowerCase() === event.name.toLowerCase()
+                  }).length;
 
                   return (
                     <div
@@ -1256,20 +1352,6 @@ function WeeklyCalendar({ schedules, events, currentDate }: {
                   );
                 })}
 
-                {/* Show only standalone trainer schedules (not linked to events) */}
-                {daySchedules
-                  .filter(s => !s.notes || !dayEvents.some(e => s.notes?.includes(e.name)))
-                  .slice(0, 2) // Limit to 2 standalone schedules
-                  .map(schedule => (
-                    <div
-                      key={schedule.id}
-                      className="bg-green-50 border-l-4 border-green-500 text-green-800 text-xs p-2 rounded"
-                    >
-                      <div className="font-semibold truncate">{schedule.trainer?.name}</div>
-                      <div className="text-xs text-gray-600">{schedule.status}</div>
-                    </div>
-                  ))
-                }
               </div>
             </div>
           )
@@ -1280,10 +1362,16 @@ function WeeklyCalendar({ schedules, events, currentDate }: {
 }
 
 // Monthly Calendar View
-function MonthlyCalendar({ schedules, events, currentDate }: {
+function MonthlyCalendar({ 
+  schedules, 
+  events, 
+  currentDate,
+  currentTrainer  // ADD THIS PARAMETER
+}: {
   schedules: any[];
   events: any[];
   currentDate: Date;
+  currentTrainer: any | null;  // ADD THIS TYPE
 }) {
   const navigate = useNavigate()
   const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
@@ -1324,7 +1412,11 @@ function MonthlyCalendar({ schedules, events, currentDate }: {
 
           const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
           const daySchedules = schedules.filter(s => s.date === dateStr)
-          const dayEvents = events.filter(e => isEventOnDate(e, dateStr))
+          
+          // 🔥 NEW: Filter events based on user role
+          const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day)
+          const allDayEvents = events.filter(e => isEventOnDate(e, dateStr))
+          const dayEvents = filterEventsForUser(allDayEvents, schedules, currentTrainer, date)
 
           return (
             <div
@@ -1350,18 +1442,10 @@ function MonthlyCalendar({ schedules, events, currentDate }: {
                     {event.name.substring(0, 8)}..
                   </div>
                 ))}
-                {daySchedules.slice(0, 2).map(schedule => (
-                  <div
-                    key={schedule.id}
-                    className="bg-green-100 text-green-800 text-xs p-1 rounded truncate"
-                    title={`${schedule.trainer?.name} - ${schedule.status}`}
-                  >
-                    {schedule.trainer?.name?.substring(0, 8)}..
-                  </div>
-                ))}
-                {(dayEvents.length + daySchedules.length) > 4 && (
+               
+                {dayEvents.length > 2 && (
                   <div className="text-xs text-gray-600">
-                    +{dayEvents.length + daySchedules.length - 4} more
+                    +{dayEvents.length - 2} more
                   </div>
                 )}
               </div>
